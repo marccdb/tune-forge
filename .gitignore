@@ -1,0 +1,8 @@
+# Root artifacts
+/tmp-frames/
+*.log
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
