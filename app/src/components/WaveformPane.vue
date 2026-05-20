@@ -8,14 +8,20 @@ import { usePracticeStore } from '../stores/practice'
 const store = usePracticeStore()
 
 const host = ref<HTMLElement | null>(null)
+const zoomPxPerSec = ref(0)
+const MIN_ZOOM_PX_PER_SEC = 0
+const MAX_ZOOM_PX_PER_SEC = 240
+const ZOOM_STEP = 12
 
 let waveSurfer: WaveSurfer | null = null
 let regionsPlugin: ReturnType<typeof RegionsPlugin.create> | null = null
-let loopRegion: Region | null = null
+const loopRegions = new Map<string, Region>()
 const markerRegions = new Map<string, Region>()
-let updatingLoopFromRegion = false
+let updatingLoopSectionFromRegion = false
 
 const hasAudio = computed(() => Boolean(store.fileObjectUrl))
+const canZoomOut = computed(() => zoomPxPerSec.value > MIN_ZOOM_PX_PER_SEC)
+const canZoomIn = computed(() => zoomPxPerSec.value < MAX_ZOOM_PX_PER_SEC)
 
 function getWaveColors() {
   const theme = document.documentElement.getAttribute('data-bs-theme')
@@ -44,6 +50,31 @@ function applyWaveTheme() {
   })
 }
 
+function applyZoom(pxPerSec: number) {
+  if (!waveSurfer) return
+  const clamped = Math.max(MIN_ZOOM_PX_PER_SEC, Math.min(MAX_ZOOM_PX_PER_SEC, pxPerSec))
+  zoomPxPerSec.value = clamped
+
+  if (typeof waveSurfer.zoom === 'function') {
+    waveSurfer.zoom(clamped)
+    return
+  }
+
+  waveSurfer.setOptions({ minPxPerSec: clamped })
+}
+
+function zoomIn() {
+  applyZoom(zoomPxPerSec.value + ZOOM_STEP)
+}
+
+function zoomOut() {
+  applyZoom(zoomPxPerSec.value - ZOOM_STEP)
+}
+
+function resetZoom() {
+  applyZoom(MIN_ZOOM_PX_PER_SEC)
+}
+
 function refreshMarkers() {
   if (!regionsPlugin) return
   for (const region of markerRegions.values()) {
@@ -69,40 +100,46 @@ function refreshMarkers() {
   }
 }
 
-function syncLoopRegion() {
+function refreshLoopSections() {
   if (!regionsPlugin || !store.durationSec) return
-  if (loopRegion) {
-    loopRegion.remove()
-    loopRegion = null
+  const plugin = regionsPlugin
+  for (const region of loopRegions.values()) {
+    region.remove()
   }
+  loopRegions.clear()
 
-  loopRegion = regionsPlugin.addRegion({
-    id: 'loop',
-    start: store.loop.startSec,
-    end: store.loop.endSec,
-    drag: true,
-    resize: true,
-    color: store.loop.enabled ? 'rgba(11, 173, 107, 0.28)' : 'rgba(11, 173, 107, 0.14)',
-    minLength: 0.05,
-    content: `Loop (${store.loop.mode})`,
-  })
-
-  loopRegion.on('update-end', () => {
-    if (!loopRegion) return
-    updatingLoopFromRegion = true
-    store.updateLoop({
-      ...store.loop,
-      startSec: loopRegion.start,
-      endSec: loopRegion.end,
-      enabled: true,
+  store.loopSections.forEach((section, index) => {
+    const isActive = section.id === store.activeLoopSectionId
+    const region = plugin.addRegion({
+      id: section.id,
+      start: section.startSec,
+      end: section.endSec,
+      drag: true,
+      resize: true,
+      color: isActive ? 'rgba(11, 173, 107, 0.34)' : 'rgba(11, 173, 107, 0.18)',
+      minLength: 0.05,
+      content: `${index + 1}. ${section.name}`,
     })
-    updatingLoopFromRegion = false
+
+    region.on('click', (event) => {
+      event.preventDefault()
+      store.selectLoopSection(section.id)
+    })
+
+    region.on('update-end', () => {
+      updatingLoopSectionFromRegion = true
+      store.updateLoopSectionRange(section.id, region.start, region.end)
+      updatingLoopSectionFromRegion = false
+    })
+
+    loopRegions.set(section.id, region)
   })
 }
 
 async function loadWaveform(url: string) {
   if (!waveSurfer) return
   await waveSurfer.load(url)
+  applyZoom(zoomPxPerSec.value)
 }
 
 onMounted(() => {
@@ -132,7 +169,7 @@ onMounted(() => {
     (url) => {
       if (!url) return
       void loadWaveform(url).then(() => {
-        syncLoopRegion()
+        refreshLoopSections()
         refreshMarkers()
       })
     },
@@ -140,10 +177,10 @@ onMounted(() => {
   )
 
   watch(
-    () => [store.loop.startSec, store.loop.endSec, store.loop.enabled, store.loop.mode],
+    () => [store.loopSections, store.activeLoopSectionId],
     () => {
-      if (updatingLoopFromRegion) return
-      syncLoopRegion()
+      if (updatingLoopSectionFromRegion) return
+      refreshLoopSections()
     },
     { deep: true },
   )
@@ -171,11 +208,14 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  for (const region of loopRegions.values()) {
+    region.remove()
+  }
+  loopRegions.clear()
   for (const region of markerRegions.values()) {
     region.remove()
   }
   markerRegions.clear()
-  loopRegion?.remove()
   waveSurfer?.destroy()
 })
 </script>
@@ -184,10 +224,35 @@ onBeforeUnmount(() => {
   <section class="waveform-shell">
     <header class="wave-head">
       <h2>Waveform</h2>
-      <span v-if="hasAudio">Click waveform to seek. Drag green region for loop.</span>
-      <span v-else>Import audio file to start.</span>
+      <div class="wave-controls">
+        <span v-if="hasAudio">Click waveform to seek. Add/select sections to loop. Drag section to edit.</span>
+        <span v-else>Import audio file to start.</span>
+        <div class="zoom-controls">
+          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="zoomOut">
+            -
+          </button>
+          <input
+            :value="zoomPxPerSec"
+            class="form-range zoom-slider"
+            type="range"
+            :min="MIN_ZOOM_PX_PER_SEC"
+            :max="MAX_ZOOM_PX_PER_SEC"
+            :step="ZOOM_STEP"
+            :disabled="!hasAudio"
+            @input="applyZoom(Number(($event.target as HTMLInputElement).value))"
+          />
+          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomIn" @click="zoomIn">
+            +
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="resetZoom">
+            1:1
+          </button>
+        </div>
+      </div>
     </header>
-    <div ref="host" class="waveform-host" />
+    <div class="wave-scroll" :class="{ 'is-empty': !hasAudio }">
+      <div ref="host" class="waveform-host" />
+    </div>
   </section>
 </template>
 
@@ -202,7 +267,7 @@ onBeforeUnmount(() => {
 .wave-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 16px;
   margin-bottom: 12px;
 }
@@ -220,9 +285,62 @@ onBeforeUnmount(() => {
   color: var(--bs-secondary-color);
 }
 
+.wave-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--bs-body-bg) 84%, transparent);
+}
+
+.zoom-slider {
+  width: 220px;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--bs-primary);
+}
+
+.wave-scroll {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.wave-scroll.is-empty::before {
+  content: '';
+  position: absolute;
+  inset: 0.5rem 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 47%,
+      color-mix(in srgb, var(--bs-secondary-color) 45%, transparent) 47%,
+      color-mix(in srgb, var(--bs-secondary-color) 45%, transparent) 53%,
+      transparent 53%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 10px,
+      color-mix(in srgb, var(--bs-secondary-color) 35%, transparent) 10px 12px,
+      transparent 12px 20px
+    );
+}
+
 .waveform-host {
   min-height: 180px;
-  max-width: 100%;
-  overflow: hidden;
+  min-width: 100%;
 }
 </style>

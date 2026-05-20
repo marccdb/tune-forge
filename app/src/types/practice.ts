@@ -7,6 +7,13 @@ export interface LoopRange {
   mode: LoopMode
 }
 
+export interface LoopSection {
+  id: string
+  name: string
+  startSec: number
+  endSec: number
+}
+
 export interface Marker {
   id: string
   label: string
@@ -29,8 +36,9 @@ export interface PracticeProject {
   pitchCents: number
   volume: number
   loop: LoopRange
+  loopSections: LoopSection[]
+  activeLoopSectionId: string | null
   markers: Marker[]
   effects: EffectPreset
   updatedAt: string
 }
-

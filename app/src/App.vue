@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WaveformPane from './components/WaveformPane.vue'
 import { usePracticeStore } from './stores/practice'
-import { MIN_PITCH, MAX_PITCH, MIN_TEMPO, MAX_TEMPO, normalizeLoop } from './lib/math'
+import { MIN_PITCH, MAX_PITCH, MIN_TEMPO, MAX_TEMPO } from './lib/math'
 
 const store = usePracticeStore()
 const theme = ref<'light' | 'dark'>('light')
@@ -22,6 +22,9 @@ const formattedTime = computed(() => {
 
 const hasLoadedTrack = computed(() => Boolean(store.loadedFile))
 const controlsDisabled = computed(() => store.isImporting || !hasLoadedTrack.value)
+const activeLoopSection = computed(
+  () => store.loopSections.find((section) => section.id === store.activeLoopSectionId) ?? null,
+)
 
 const seekPercent = computed({
   get() {
@@ -53,20 +56,20 @@ function applyTheme(value: 'light' | 'dark') {
   document.documentElement.setAttribute('data-bs-theme', value)
 }
 
-function onLoopStartInput(value: string) {
+function onLoopSectionStartInput(sectionId: string, value: string) {
   const parsed = Number(value)
   if (Number.isNaN(parsed)) return
-  store.updateLoop(
-    normalizeLoop({ ...store.loop, startSec: parsed, enabled: true }, store.durationSec || 1),
-  )
+  const section = store.loopSections.find((entry) => entry.id === sectionId)
+  if (!section) return
+  store.updateLoopSectionRange(sectionId, parsed, section.endSec)
 }
 
-function onLoopEndInput(value: string) {
+function onLoopSectionEndInput(sectionId: string, value: string) {
   const parsed = Number(value)
   if (Number.isNaN(parsed)) return
-  store.updateLoop(
-    normalizeLoop({ ...store.loop, endSec: parsed, enabled: true }, store.durationSec || 1),
-  )
+  const section = store.loopSections.find((entry) => entry.id === sectionId)
+  if (!section) return
+  store.updateLoopSectionRange(sectionId, section.startSec, parsed)
 }
 
 function registerShortcuts(event: KeyboardEvent) {
@@ -247,37 +250,37 @@ onBeforeUnmount(() => {
           <div class="card-body d-flex flex-column gap-3">
             <h2 class="section-title">Loop Controls</h2>
 
-            <div class="row g-2">
-              <div class="col-md-4">
-                <label class="form-label">Start</label>
-                <input
-                  :value="store.loop.startSec.toFixed(2)"
-                  class="form-control"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  :disabled="controlsDisabled"
-                  @change="onLoopStartInput(($event.target as HTMLInputElement).value)"
-                />
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">End</label>
-                <input
-                  :value="store.loop.endSec.toFixed(2)"
-                  class="form-control"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  :disabled="controlsDisabled"
-                  @change="onLoopEndInput(($event.target as HTMLInputElement).value)"
-                />
-              </div>
-              <div class="col-md-4">
-                <label class="form-label">Mode</label>
+            <div class="d-flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="controlsDisabled"
+                @click="store.addLoopSection"
+              >
+                Add Section
+              </button>
+              <button
+                type="button"
+                class="btn btn-warning"
+                :disabled="controlsDisabled || !activeLoopSection"
+                @click="store.setLoopEnabled(!store.loop.enabled)"
+              >
+                {{ store.loop.enabled ? 'Disable Active Loop' : 'Enable Active Loop' }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                :disabled="controlsDisabled || !activeLoopSection"
+                @click="store.clearActiveLoopSection"
+              >
+                Clear Active
+              </button>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <label class="form-label mb-0">Mode</label>
                 <select
-                  class="form-select"
+                  class="form-select form-select-sm"
                   :value="store.loop.mode"
-                  :disabled="controlsDisabled"
+                  :disabled="controlsDisabled || !activeLoopSection"
                   @change="store.setLoopMode(($event.target as HTMLSelectElement).value as 'forever' | 'once')"
                 >
                   <option value="forever">Loop Forever</option>
@@ -286,39 +289,89 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="d-flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="btn btn-primary"
-                :disabled="controlsDisabled"
-                @click="store.setLoopStartFromPlayhead"
-              >
-                Set A
-              </button>
-              <button
-                type="button"
-                class="btn btn-primary"
-                :disabled="controlsDisabled"
-                @click="store.setLoopEndFromPlayhead"
-              >
-                Set B
-              </button>
-              <button
-                type="button"
-                class="btn btn-warning"
-                :disabled="controlsDisabled"
-                @click="store.setLoopEnabled(!store.loop.enabled)"
-              >
-                {{ store.loop.enabled ? 'Disable Loop' : 'Enable Loop' }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary"
-                :disabled="controlsDisabled"
-                @click="store.resetLoop"
-              >
-                Reset Loop
-              </button>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th scope="col" style="width: 44px">#</th>
+                    <th scope="col" style="width: 24%">Name</th>
+                    <th scope="col" style="width: 96px">Start</th>
+                    <th scope="col" style="width: 96px">End</th>
+                    <th scope="col" style="width: 150px">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="store.loopSections.length === 0">
+                    <td colspan="5" class="text-body-secondary">
+                      No loop sections yet. Add one to define loopable regions.
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="(section, index) in store.loopSections"
+                    :key="section.id"
+                    :class="{ 'table-active': section.id === store.activeLoopSectionId }"
+                  >
+                    <td>{{ index + 1 }}</td>
+                    <td>
+                      <input
+                        :value="section.name"
+                        class="form-control form-control-sm"
+                        type="text"
+                        :disabled="controlsDisabled"
+                        @change="store.renameLoopSection(section.id, ($event.target as HTMLInputElement).value)"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        :value="section.startSec.toFixed(2)"
+                        class="form-control form-control-sm"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        :disabled="controlsDisabled"
+                        @change="onLoopSectionStartInput(section.id, ($event.target as HTMLInputElement).value)"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        :value="section.endSec.toFixed(2)"
+                        class="form-control form-control-sm"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        :disabled="controlsDisabled"
+                        @change="onLoopSectionEndInput(section.id, ($event.target as HTMLInputElement).value)"
+                      />
+                    </td>
+                    <td class="d-flex gap-1">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-light"
+                        :disabled="controlsDisabled"
+                        @click="store.selectLoopSection(section.id)"
+                      >
+                        Jump
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-danger"
+                        :disabled="controlsDisabled"
+                        @click="store.removeLoopSection(section.id)"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="small text-body-secondary">
+              <span v-if="activeLoopSection">
+                Active: <strong>{{ activeLoopSection.name }}</strong>
+                ({{ activeLoopSection.startSec.toFixed(2) }}s - {{ activeLoopSection.endSec.toFixed(2) }}s)
+              </span>
+              <span v-else>No active section selected.</span>
             </div>
           </div>
         </div>
