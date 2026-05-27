@@ -116,9 +116,15 @@ function refreshLoopSections() {
       end: section.endSec,
       drag: true,
       resize: true,
-      color: isActive ? 'rgba(11, 173, 107, 0.34)' : 'rgba(11, 173, 107, 0.18)',
+      color: section.enabled
+        ? isActive
+          ? 'rgba(11, 173, 107, 0.34)'
+          : 'rgba(11, 173, 107, 0.18)'
+        : isActive
+          ? 'rgba(108, 117, 125, 0.34)'
+          : 'rgba(108, 117, 125, 0.16)',
       minLength: 0.05,
-      content: `${index + 1}. ${section.name}`,
+      content: `${index + 1}. ${section.name}${section.enabled ? '' : ' (off)'}`,
     })
 
     region.on('click', (event) => {

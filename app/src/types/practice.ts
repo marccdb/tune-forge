@@ -12,6 +12,7 @@ export interface LoopSection {
   name: string
   startSec: number
   endSec: number
+  enabled: boolean
 }
 
 export interface Marker {

@@ -1,7 +1,7 @@
 import type { LoopRange } from '../types/practice'
 
-export const MIN_TEMPO = 0.3
-export const MAX_TEMPO = 2.5
+export const MIN_TEMPO = 0.5
+export const MAX_TEMPO = 1.5
 export const MIN_PITCH = -12
 export const MAX_PITCH = 12
 export const MIN_LOOP_DURATION_SEC = 0.05
@@ -38,4 +38,3 @@ export function normalizeLoop(loop: LoopRange, durationSec: number): LoopRange {
 export function makeFingerprint(file: File): string {
   return `${file.name}:${file.size}:${file.lastModified}`
 }
-

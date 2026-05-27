@@ -71,6 +71,7 @@ function makeLoopSection(durationSec: number, startSec: number, endSec: number, 
       name: name?.trim() || '',
       startSec,
       endSec,
+      enabled: true,
     },
     durationSec,
   )
@@ -139,6 +140,7 @@ export const usePracticeStore = defineStore('practice', () => {
         name: section.name,
         startSec: section.startSec,
         endSec: section.endSec,
+        enabled: section.enabled,
       })),
       activeLoopSectionId: activeLoopSectionId.value,
       markers: projectMarkers.map((marker) => ({
@@ -480,6 +482,7 @@ export const usePracticeStore = defineStore('practice', () => {
             name: section.name?.trim() || `Section ${index + 1}`,
             startSec: section.startSec,
             endSec: section.endSec,
+            enabled: (section as LoopSection & { enabled?: boolean }).enabled ?? project.loop.enabled ?? true,
           },
           sourceDuration,
         ),
@@ -493,6 +496,7 @@ export const usePracticeStore = defineStore('practice', () => {
           name: 'Section 1',
           startSec: project.loop.startSec,
           endSec: project.loop.endSec,
+          enabled: true,
         },
         sourceDuration,
       )
@@ -511,7 +515,7 @@ export const usePracticeStore = defineStore('practice', () => {
     activeLoopSectionId.value = activeSection?.id ?? null
     loop.value = activeSection
       ? {
-          enabled: project.loop.enabled,
+          enabled: activeSection.enabled,
           startSec: activeSection.startSec,
           endSec: activeSection.endSec,
           mode: project.loop.mode,
@@ -550,9 +554,8 @@ export const usePracticeStore = defineStore('practice', () => {
   }
 
   function setLoopEnabled(enabled: boolean) {
-    if (enabled && !activeLoopSectionId.value) return
-    loop.value = { ...loop.value, enabled }
-    engine.setLoop(loop.value)
+    if (!activeLoopSectionId.value) return
+    setLoopSectionEnabled(activeLoopSectionId.value, enabled)
   }
 
   function updateLoop(nextLoop: LoopRange) {
@@ -582,6 +585,7 @@ export const usePracticeStore = defineStore('practice', () => {
     loop.value = normalizeLoop(
       {
         ...loop.value,
+        enabled: activeSection.enabled,
         startSec: activeSection.startSec,
         endSec: activeSection.endSec,
       },
@@ -605,7 +609,6 @@ export const usePracticeStore = defineStore('practice', () => {
     loopSections.value = nextSections
       .map((section) => normalizeLoopSection(section, durationSec.value || MIN_LOOP_DURATION_SEC))
       .sort((a, b) => a.startSec - b.startSec)
-    loop.value = { ...loop.value, enabled: true }
     syncActiveLoopSectionToEngine()
   }
 
@@ -624,7 +627,6 @@ export const usePracticeStore = defineStore('practice', () => {
     loopSections.value = nextSections
       .map((section) => normalizeLoopSection(section, durationSec.value || MIN_LOOP_DURATION_SEC))
       .sort((a, b) => a.startSec - b.startSec)
-    loop.value = { ...loop.value, enabled: true }
     syncActiveLoopSectionToEngine()
   }
 
@@ -640,7 +642,6 @@ export const usePracticeStore = defineStore('practice', () => {
     const section = makeLoopSection(duration, startSec, endSec, `Section ${loopSections.value.length + 1}`)
     loopSections.value = [...loopSections.value, section].sort((a, b) => a.startSec - b.startSec)
     activeLoopSectionId.value = section.id
-    loop.value = { ...loop.value, enabled: true }
     syncActiveLoopSectionToEngine()
   }
 
@@ -650,7 +651,7 @@ export const usePracticeStore = defineStore('practice', () => {
     activeLoopSectionId.value = section.id
     loop.value = {
       ...loop.value,
-      enabled: true,
+      enabled: section.enabled,
       startSec: section.startSec,
       endSec: section.endSec,
     }
@@ -664,6 +665,19 @@ export const usePracticeStore = defineStore('practice', () => {
     activeLoopSectionId.value = null
     loop.value = { ...loop.value, enabled: false }
     engine.setLoop(loop.value)
+  }
+
+  function setLoopSectionEnabled(sectionId: string, enabled: boolean) {
+    loopSections.value = loopSections.value.map((section) => (section.id === sectionId ? { ...section, enabled } : section))
+    if (activeLoopSectionId.value === sectionId) {
+      syncActiveLoopSectionToEngine()
+    }
+  }
+
+  function setAllLoopSectionsEnabled(enabled: boolean) {
+    if (loopSections.value.length === 0) return
+    loopSections.value = loopSections.value.map((section) => ({ ...section, enabled }))
+    syncActiveLoopSectionToEngine()
   }
 
   function removeLoopSection(sectionId: string) {
@@ -837,6 +851,8 @@ export const usePracticeStore = defineStore('practice', () => {
     removeLoopSection,
     renameLoopSection,
     updateLoopSectionRange,
+    setLoopSectionEnabled,
+    setAllLoopSectionsEnabled,
     addMarker,
     removeMarker,
     renameMarker,

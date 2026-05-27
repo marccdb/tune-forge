@@ -28,6 +28,9 @@ const hasDirectoryPicker = computed(() => typeof window !== 'undefined' && 'show
 const activeLoopSection = computed(
   () => store.loopSections.find((section) => section.id === store.activeLoopSectionId) ?? null,
 )
+const allLoopSectionsEnabled = computed(
+  () => store.loopSections.length > 0 && store.loopSections.every((section) => section.enabled),
+)
 const canRefreshFolder = computed(
   () => store.folderConnected && store.tracks.some((track) => track.sourceType === 'directory-handle') && !store.isScanning,
 )
@@ -42,6 +45,21 @@ const seekPercent = computed({
     store.seek((value / 100) * store.durationSec)
   },
 })
+
+const tempoPercent = computed(() => store.tempo * 100)
+const tempoDeltaBpm = computed(() => Math.round((store.tempo - 1) * 100))
+const pitchHalfToneLabel = computed(() => {
+  const semitones = Math.round(store.pitchSemitones)
+  if (semitones === 0) return '0 half tones'
+  const direction = semitones > 0 ? 'sharp' : 'flat'
+  const amount = Math.abs(semitones)
+  return `${amount} half tone${amount === 1 ? '' : 's'} ${direction}`
+})
+
+function nudgeTempoByBpm(deltaBpm: number) {
+  const nextTempo = store.tempo + deltaBpm / 100
+  store.setTempo(nextTempo)
+}
 
 async function onFileChanged(event: Event) {
   const target = event.target as HTMLInputElement
@@ -278,12 +296,24 @@ onBeforeUnmount(() => {
           <div class="col-lg-6">
             <div class="card shadow-sm border-0 h-100">
               <div class="card-body">
-                <h2 class="section-title">Tempo, Pitch, Volume</h2>
-
                 <label class="form-label d-flex justify-content-between">
                   <span>Tempo</span>
-                  <strong>{{ store.tempo.toFixed(2) }}x</strong>
+                  <strong>
+                    {{ tempoPercent.toFixed(0) }}%
+                    ({{ tempoDeltaBpm >= 0 ? '+' : '' }}{{ tempoDeltaBpm }} BPM)
+                  </strong>
                 </label>
+                <div class="d-flex gap-2 mb-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(-1)">
+                    -1 BPM
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(1)">
+                    +1 BPM
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="store.setTempo(1)">
+                    Reset 100%
+                  </button>
+                </div>
                 <input
                   :value="store.tempo"
                   class="form-range mb-3"
@@ -297,7 +327,7 @@ onBeforeUnmount(() => {
 
                 <label class="form-label d-flex justify-content-between">
                   <span>Pitch</span>
-                  <strong>{{ store.pitchSemitones.toFixed(1) }} st</strong>
+                  <strong>{{ pitchHalfToneLabel }}</strong>
                 </label>
                 <input
                   :value="store.pitchSemitones"
@@ -305,7 +335,7 @@ onBeforeUnmount(() => {
                   type="range"
                   :min="MIN_PITCH"
                   :max="MAX_PITCH"
-                  step="0.1"
+                  step="1"
                   :disabled="controlsDisabled"
                   @input="store.setPitchSemitones(Number(($event.target as HTMLInputElement).value))"
                 />
@@ -333,34 +363,24 @@ onBeforeUnmount(() => {
               <div class="card-body d-flex flex-column gap-3">
                 <h2 class="section-title">Loop Controls</h2>
 
-                <div class="loop-controls-toolbar d-flex flex-wrap align-items-center gap-2">
-                  <div class="d-flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      class="btn btn-primary"
-                      :disabled="controlsDisabled"
-                      @click="store.addLoopSection"
-                    >
-                      Add Section
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-warning"
-                      :disabled="controlsDisabled || !activeLoopSection"
-                      @click="store.setLoopEnabled(!store.loop.enabled)"
-                    >
-                      {{ store.loop.enabled ? 'Disable Active Loop' : 'Enable Active Loop' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-secondary"
-                      :disabled="controlsDisabled || !activeLoopSection"
-                      @click="store.clearActiveLoopSection"
-                    >
-                      Clear Active
-                    </button>
-                  </div>
-                  <div class="loop-mode-group d-flex align-items-center gap-2">
+                <div class="loop-controls-toolbar d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="controlsDisabled"
+                    @click="store.addLoopSection"
+                  >
+                    Add Section
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    :disabled="controlsDisabled || store.loopSections.length === 0"
+                    @click="store.setAllLoopSectionsEnabled(!allLoopSectionsEnabled)"
+                  >
+                    {{ allLoopSectionsEnabled ? 'Clear All' : 'Enable All' }}
+                  </button>
+                  <div class="loop-mode-group d-flex align-items-center gap-2 ms-auto">
                     <label class="form-label mb-0">Mode</label>
                     <select
                       class="loop-mode-select form-select form-select-sm"
@@ -379,15 +399,16 @@ onBeforeUnmount(() => {
                     <thead>
                       <tr>
                         <th scope="col" style="width: 44px">#</th>
-                        <th scope="col" style="width: 24%">Name</th>
-                        <th scope="col" style="width: 96px">Start</th>
-                        <th scope="col" style="width: 96px">End</th>
-                        <th scope="col" style="width: 150px">Actions</th>
+                        <th scope="col" style="width: 56px">Loop</th>
+                        <th scope="col" style="width: 18%">Name</th>
+                        <th scope="col" style="width: 116px">Start</th>
+                        <th scope="col" style="width: 116px">End</th>
+                        <th scope="col" style="width: 138px">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-if="store.loopSections.length === 0">
-                        <td colspan="5" class="text-body-secondary">
+                        <td colspan="6" class="text-body-secondary">
                           No loop sections yet. Add one to define loopable regions.
                         </td>
                       </tr>
@@ -397,6 +418,15 @@ onBeforeUnmount(() => {
                         :class="{ 'table-active': section.id === store.activeLoopSectionId }"
                       >
                         <td>{{ index + 1 }}</td>
+                        <td>
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            :checked="section.enabled"
+                            :disabled="controlsDisabled"
+                            @change="store.setLoopSectionEnabled(section.id, ($event.target as HTMLInputElement).checked)"
+                          />
+                        </td>
                         <td>
                           <input
                             :value="section.name"

@@ -148,6 +148,7 @@ code {
 
 .loop-controls-toolbar {
   row-gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 
 .loop-mode-group {
@@ -173,6 +174,10 @@ code {
     margin-left: 0;
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .loop-controls-toolbar {
+    flex-wrap: wrap;
   }
 
   .display-6 {
