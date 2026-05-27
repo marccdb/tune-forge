@@ -8,6 +8,7 @@ import {
   normalizePitchSemitones,
   normalizeTempo,
   makeFingerprint,
+  makeProjectKey,
 } from '../lib/math'
 import { IndexedDbProjectRepository } from '../lib/projectRepository'
 import {
@@ -170,6 +171,14 @@ export const usePracticeStore = defineStore('practice', () => {
     isPlaying.value = playing
   })
 
+  const unsubscribeLoop = engine.on('loopchange', (nextLoop) => {
+    loop.value = normalizeLoop(nextLoop, durationSec.value || MIN_LOOP_DURATION_SEC)
+    if (!activeLoopSectionId.value) return
+    loopSections.value = loopSections.value.map((section) =>
+      section.id === activeLoopSectionId.value ? { ...section, enabled: loop.value.enabled } : section,
+    )
+  })
+
   const unsubscribeError = engine.on('error', ({ message }) => {
     error.value = message
   })
@@ -182,27 +191,33 @@ export const usePracticeStore = defineStore('practice', () => {
   function teardown() {
     unsubscribeTime()
     unsubscribeState()
+    unsubscribeLoop()
     unsubscribeError()
     unsubscribeLoaded()
   }
 
-  async function importFile(file: File): Promise<void> {
+  async function importFile(file: File, trackContext?: { relativePath?: string | null }): Promise<void> {
     autosaveSuspended.value = true
     isImporting.value = true
 
     try {
       error.value = ''
-      loadedFile.value = file
-      trackName.value = file.name
-      fingerprint.value = makeFingerprint(file)
-      projectId.value = fingerprint.value
-
-      if (fileObjectUrl.value) {
-        URL.revokeObjectURL(fileObjectUrl.value)
-      }
-      fileObjectUrl.value = URL.createObjectURL(file)
+      const nextFingerprint = makeFingerprint(file)
+      const nextProjectId = makeProjectKey(file, trackContext?.relativePath)
 
       await engine.loadFile(file)
+      const nextFileObjectUrl = URL.createObjectURL(file)
+      const previousFileObjectUrl = fileObjectUrl.value
+
+      loadedFile.value = file
+      trackName.value = file.name
+      fingerprint.value = nextFingerprint
+      projectId.value = nextProjectId
+      fileObjectUrl.value = nextFileObjectUrl
+      if (previousFileObjectUrl) {
+        URL.revokeObjectURL(previousFileObjectUrl)
+      }
+
       tempo.value = engine.setTempo(1)
       pitchSemitones.value = engine.setPitch(0)
       pitchCents.value = 0
@@ -215,9 +230,22 @@ export const usePracticeStore = defineStore('practice', () => {
       activeMarkerId.value = null
       engine.setLoop(loop.value)
 
-      const existing = await repository.get(projectId.value)
+      let existing = await repository.get(nextProjectId)
+      if (!existing && nextProjectId !== nextFingerprint) {
+        existing = await repository.get(nextFingerprint)
+      }
       if (existing) {
         applyProject(existing)
+      }
+
+      if (!trackContext?.relativePath) {
+        activeTrackId.value = null
+        const snapshotSourceType = folderHandle.value ? 'directory-handle' : 'webkitdirectory'
+        try {
+          await saveLibrarySnapshot(snapshotSourceType)
+        } catch (saveIssue) {
+          console.warn('Failed to persist cleared library selection.', saveIssue)
+        }
       }
     } finally {
       isImporting.value = false
@@ -331,7 +359,7 @@ export const usePracticeStore = defineStore('practice', () => {
     loadingTrackId.value = trackId
     try {
       const file = await loadTrackFile(track)
-      await importFile(file)
+      await importFile(file, { relativePath: track.relativePath })
       activeTrackId.value = trackId
       folderConnected.value = true
       await saveLibrarySnapshot(track.sourceType)

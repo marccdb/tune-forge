@@ -80,6 +80,16 @@ function getWaveWrapper(): HTMLElement | null {
   return waveSurfer.getWrapper()
 }
 
+function getWaveScrollLeft(): number {
+  if (!waveSurfer) return 0
+  return Math.max(0, waveSurfer.getScroll())
+}
+
+function setWaveScrollLeft(next: number) {
+  if (!waveSurfer) return
+  waveSurfer.setScroll(Math.max(0, next))
+}
+
 function applyZoom(zoomLevel: number, anchorRatio = 0.5) {
   const clamped = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomLevel))
   zoomFactor.value = clamped
@@ -90,7 +100,7 @@ function applyZoom(zoomLevel: number, anchorRatio = 0.5) {
   const wrapper = getWaveWrapper()
   if (!wrapper) return
   const previousWidth = Math.max(wrapper.scrollWidth, hostEl.clientWidth, 1)
-  const previousScrollLeft = wrapper.scrollLeft
+  const previousScrollLeft = getWaveScrollLeft()
   const clampedAnchorRatio = clamp01(anchorRatio)
   const anchorOffsetInViewport = clampedAnchorRatio * hostEl.clientWidth
   const anchorPx = previousScrollLeft + anchorOffsetInViewport
@@ -111,7 +121,7 @@ function applyZoom(zoomLevel: number, anchorRatio = 0.5) {
     const nextAnchorPx = anchorPercent * nextWidth
     const nextScrollLeft = nextAnchorPx - anchorOffsetInViewport
     const maxScrollLeft = Math.max(0, nextWidth - scrollHost.value.clientWidth)
-    nextWrapper.scrollLeft = Math.min(maxScrollLeft, Math.max(0, nextScrollLeft))
+    setWaveScrollLeft(Math.min(maxScrollLeft, Math.max(0, nextScrollLeft)))
     syncWaveMetrics()
   })
 }
@@ -170,11 +180,30 @@ function syncWaveMetrics() {
   const contentWidth = Math.max(wrapper.scrollWidth, viewportWidth)
   waveContentWidth.value = contentWidth
   const maxScrollLeft = Math.max(0, contentWidth - viewportWidth)
-  const clampedScrollLeft = Math.min(maxScrollLeft, Math.max(0, wrapper.scrollLeft))
-  if (wrapper.scrollLeft !== clampedScrollLeft) {
-    wrapper.scrollLeft = clampedScrollLeft
-  }
+  const clampedScrollLeft = Math.min(maxScrollLeft, getWaveScrollLeft())
+  setWaveScrollLeft(clampedScrollLeft)
   waveScrollLeft.value = clampedScrollLeft
+}
+
+function syncWaveMetricsFromScroll(scrollLeft: number) {
+  if (!scrollHost.value) {
+    waveContentWidth.value = 0
+    waveScrollLeft.value = 0
+    return
+  }
+
+  const wrapper = getWaveWrapper()
+  if (!waveSurfer || !wrapper) {
+    waveContentWidth.value = scrollHost.value.clientWidth
+    waveScrollLeft.value = 0
+    return
+  }
+
+  const viewportWidth = scrollHost.value.clientWidth
+  const contentWidth = Math.max(wrapper.scrollWidth, viewportWidth)
+  waveContentWidth.value = contentWidth
+  const maxScrollLeft = Math.max(0, contentWidth - viewportWidth)
+  waveScrollLeft.value = Math.min(maxScrollLeft, Math.max(0, scrollLeft))
 }
 
 function getMaxScrollLeft(): number {
@@ -193,8 +222,12 @@ function markerLeftPx(timeSec: number): number {
   return clamp01(timeSec / store.durationSec) * waveContentWidth.value
 }
 
-const markerAPositionPx = computed(() => (markerA.value ? markerLeftPx(markerA.value.timeSec) : null))
-const markerBPositionPx = computed(() => (markerB.value ? markerLeftPx(markerB.value.timeSec) : null))
+function markerViewportLeftPx(timeSec: number): number {
+  return markerLeftPx(timeSec) - waveScrollLeft.value
+}
+
+const markerAPositionPx = computed(() => (markerA.value ? markerViewportLeftPx(markerA.value.timeSec) : null))
+const markerBPositionPx = computed(() => (markerB.value ? markerViewportLeftPx(markerB.value.timeSec) : null))
 
 function closeContextMenu() {
   contextMenu.value.visible = false
@@ -209,13 +242,30 @@ function clampMenuToWaveBounds() {
   contextMenu.value.y = Math.min(Math.max(contextMenu.value.y, margin), maxY)
 }
 
+function isScrollbarInteraction(event: MouseEvent | PointerEvent): boolean {
+  const path = event.composedPath()
+  const directTarget = path[0]
+  if (directTarget instanceof HTMLElement) {
+    const part = (directTarget.getAttribute('part') || '').toLowerCase()
+    if (part.includes('scroll')) {
+      return true
+    }
+  }
+
+  if (!scrollHost.value || getMaxScrollLeft() <= 0) return false
+  const rect = scrollHost.value.getBoundingClientRect()
+  const yInHost = event.clientY - rect.top
+  const scrollbarGrabZonePx = 18
+  return yInHost >= rect.height - scrollbarGrabZonePx
+}
+
 function timeFromClientX(clientX: number): number | null {
   if (!waveSurfer || !store.durationSec || !scrollHost.value) return null
   const wrapper = getWaveWrapper()
   if (!wrapper) return null
   const rect = scrollHost.value.getBoundingClientRect()
   const xInViewport = clamp01((clientX - rect.left) / Math.max(rect.width, 1)) * rect.width
-  const absoluteX = wrapper.scrollLeft + xInViewport
+  const absoluteX = getWaveScrollLeft() + xInViewport
   const relativeX = clamp01(absoluteX / Math.max(wrapper.scrollWidth, 1))
   return relativeX * store.durationSec
 }
@@ -256,6 +306,7 @@ function onWaveContextMenu(event: MouseEvent) {
 function onPointerDown(event: PointerEvent) {
   if (!scrollHost.value || !hasAudio.value) return
   if (event.button !== 0) return
+  if (isScrollbarInteraction(event)) return
   const path = event.composedPath()
   const isRegionHandle = path.some((node) => {
     if (!(node instanceof HTMLElement)) return false
@@ -269,7 +320,7 @@ function onPointerDown(event: PointerEvent) {
   if (!wrapper) return
   isPanning.value = true
   panStartX = event.clientX
-  panStartScroll = wrapper.scrollLeft
+  panStartScroll = getWaveScrollLeft()
   panDistance = 0
   scrollHost.value.setPointerCapture(event.pointerId)
   closeContextMenu()
@@ -281,8 +332,9 @@ function onPointerMove(event: PointerEvent) {
   if (!wrapper) return
   const deltaX = event.clientX - panStartX
   panDistance = Math.max(panDistance, Math.abs(deltaX))
-  wrapper.scrollLeft = clampScrollLeft(panStartScroll - deltaX)
-  waveScrollLeft.value = wrapper.scrollLeft
+  const nextScrollLeft = clampScrollLeft(panStartScroll - deltaX)
+  setWaveScrollLeft(nextScrollLeft)
+  waveScrollLeft.value = nextScrollLeft
   event.preventDefault()
 }
 
@@ -297,6 +349,7 @@ function onPointerUp(event: PointerEvent) {
 
 function onWaveLeftClick(event: MouseEvent) {
   if (!hasAudio.value) return
+  if (isScrollbarInteraction(event)) return
   if (suppressClickFromPan) {
     suppressClickFromPan = false
     return
@@ -376,7 +429,9 @@ onMounted(() => {
     plugins: [regionsPlugin],
   })
 
-  const unsubscribeScroll = waveSurfer.on('scroll', syncWaveMetrics)
+  const unsubscribeScroll = waveSurfer.on('scroll', (_, __, scrollLeft) => {
+    syncWaveMetricsFromScroll(scrollLeft)
+  })
   const unsubscribeRedraw = waveSurfer.on('redraw', syncWaveMetrics)
   const unsubscribeZoom = waveSurfer.on('zoom', syncWaveMetrics)
 
@@ -487,12 +542,12 @@ onBeforeUnmount(() => {
       @wheel.prevent="onWaveWheel"
     >
       <div ref="host" class="waveform-host" />
-      <div class="ab-markers-overlay" :style="{ width: `${waveContentWidth}px`, transform: `translateX(${-waveScrollLeft}px)` }">
+      <div class="ab-markers-overlay">
         <div
           v-for="marker in regularMarkers"
           :key="marker.id"
           class="regular-marker"
-          :style="{ left: `${markerLeftPx(marker.timeSec)}px`, '--marker-line-color': REGULAR_MARKER_LINE_COLOR }"
+          :style="{ left: `${markerViewportLeftPx(marker.timeSec)}px`, '--marker-line-color': REGULAR_MARKER_LINE_COLOR }"
         >
           <span class="regular-marker-label">{{ marker.label }}</span>
         </div>
@@ -570,12 +625,23 @@ onBeforeUnmount(() => {
   overflow-x: hidden;
   overflow-y: hidden;
   margin-top: 0;
+  cursor: default;
   border-radius: 0.55rem;
   background:
     linear-gradient(180deg, rgba(49, 84, 122, 0.94) 0%, rgba(33, 66, 104, 0.96) 55%, rgba(18, 45, 79, 0.98) 100%);
 }
 
 .wave-scroll.is-panning {
+  cursor: grabbing;
+}
+
+.waveform-host::part(scroll),
+.waveform-host::part(wrapper) {
+  cursor: default;
+}
+
+.wave-scroll.is-panning .waveform-host::part(scroll),
+.wave-scroll.is-panning .waveform-host::part(wrapper) {
   cursor: grabbing;
 }
 

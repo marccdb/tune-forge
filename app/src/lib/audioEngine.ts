@@ -5,6 +5,7 @@ import { clamp, normalizeLoop, normalizeTempo, normalizePitchSemitones } from '.
 type EngineEventMap = {
   timeupdate: { currentTime: number; duration: number }
   statechange: { isPlaying: boolean }
+  loopchange: LoopRange
   loaded: { duration: number }
   ended: void
   error: { message: string }
@@ -48,23 +49,23 @@ export class AudioEngine {
   }
 
   async loadFile(file: File): Promise<number> {
+    const previousShifter = this.shifter
+
     try {
       this.pause()
-      this.shifter?.off()
       const ctx = this.ensureContext()
       const arrayBuffer = await file.arrayBuffer()
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
 
-      this.duration = audioBuffer.duration
-      this.loop = normalizeLoop({ ...this.loop, endSec: this.duration }, this.duration)
-
-      this.shifter = new PitchShifter(ctx, audioBuffer, 2048, () => {
+      const nextDuration = audioBuffer.duration
+      const nextLoop = normalizeLoop({ ...this.loop, endSec: nextDuration }, nextDuration)
+      const nextShifter = new PitchShifter(ctx, audioBuffer, 2048, () => {
         this.isPlaying = false
         this.emit('statechange', { isPlaying: false })
         this.emit('ended', undefined)
       })
 
-      this.shifter.on('play', (detail: PitchShifterPlayDetail) => {
+      nextShifter.on('play', (detail: PitchShifterPlayDetail) => {
         const currentTime = detail.timePlayed
         this.emit('timeupdate', { currentTime, duration: this.duration })
 
@@ -72,12 +73,18 @@ export class AudioEngine {
         if (currentTime >= this.loop.endSec) {
           if (this.loop.mode === 'once') {
             this.loop = { ...this.loop, enabled: false }
+            this.emit('loopchange', this.loop)
           } else {
             this.seek(this.loop.startSec)
           }
         }
       })
 
+      this.shifter = nextShifter
+      this.duration = nextDuration
+      this.loop = nextLoop
+      previousShifter?.disconnect()
+      previousShifter?.off()
       this.emit('loaded', { duration: this.duration })
       return this.duration
     } catch (error) {

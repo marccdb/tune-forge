@@ -38,3 +38,15 @@ export function normalizeLoop(loop: LoopRange, durationSec: number): LoopRange {
 export function makeFingerprint(file: File): string {
   return `${file.name}:${file.size}:${file.lastModified}`
 }
+
+function normalizeProjectPath(path: string): string {
+  return path.replaceAll('\\', '/').replace(/^\/+/, '')
+}
+
+export function makeProjectKey(file: File, relativePath?: string | null): string {
+  if (!relativePath) {
+    return makeFingerprint(file)
+  }
+
+  return `${normalizeProjectPath(relativePath)}:${file.lastModified}:${file.size}`
+}

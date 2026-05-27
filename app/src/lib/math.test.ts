@@ -5,6 +5,8 @@ import {
   MIN_PITCH,
   MIN_TEMPO,
   MIN_LOOP_DURATION_SEC,
+  makeFingerprint,
+  makeProjectKey,
   normalizeLoop,
   normalizePitchSemitones,
   normalizeTempo,
@@ -44,3 +46,18 @@ describe('normalizeLoop', () => {
   })
 })
 
+describe('makeProjectKey', () => {
+  it('falls back to fingerprint when no track context exists', () => {
+    const file = new File(['abc'], 'take.wav', { lastModified: 42 })
+    expect(makeProjectKey(file)).toBe(makeFingerprint(file))
+  })
+
+  it('uses relative path to avoid collisions for equal file metadata', () => {
+    const first = new File(['abc'], 'take.wav', { lastModified: 42 })
+    const second = new File(['abc'], 'take.wav', { lastModified: 42 })
+
+    expect(makeFingerprint(first)).toBe(makeFingerprint(second))
+    expect(makeProjectKey(first, 'set-a/take.wav')).not.toBe(makeProjectKey(second, 'set-b/take.wav'))
+    expect(makeProjectKey(first, '\\set-a\\take.wav')).toBe(makeProjectKey(first, 'set-a/take.wav'))
+  })
+})
