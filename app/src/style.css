@@ -13,20 +13,37 @@ body {
 }
 
 .app-shell {
-  max-width: 1400px;
+  max-width: 1760px;
 }
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1.35fr) minmax(220px, 280px);
+  grid-template-areas: 'library main markers';
   gap: 1rem;
 }
 
 .library-sidebar {
+  grid-area: library;
+  height: 100%;
+}
+
+.workspace-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.markers-sidebar {
+  grid-area: markers;
   height: 100%;
 }
 
 .library-track-list {
+  overflow: auto;
+  min-height: 0;
+}
+
+.markers-list-wrap {
   overflow: auto;
   min-height: 0;
 }
@@ -96,8 +113,20 @@ code {
 }
 
 .marker-list {
-  max-height: 300px;
-  overflow: auto;
+  margin-bottom: 0;
+}
+
+.marker-list-item {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.marker-list-item .btn,
+.marker-list-item .form-control {
+  width: 100%;
+  min-width: 0;
 }
 
 .list-group-item.active {
@@ -162,10 +191,15 @@ code {
 
 @media (max-width: 768px) {
   .workspace-grid {
+    grid-template-areas:
+      'library'
+      'main'
+      'markers';
     grid-template-columns: 1fr;
   }
 
-  .library-sidebar {
+  .library-sidebar,
+  .markers-sidebar {
     height: auto;
     max-height: 320px;
   }
@@ -182,5 +216,14 @@ code {
 
   .display-6 {
     font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 1200px) and (min-width: 769px) {
+  .workspace-grid {
+    grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+    grid-template-areas:
+      'library main'
+      'library markers';
   }
 }

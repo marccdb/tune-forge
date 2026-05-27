@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
-      <section>
+      <section class="workspace-main">
         <section class="card shadow-sm border-0 mb-3">
           <div class="card-body d-flex flex-column gap-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -493,24 +493,19 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section class="card shadow-sm border-0 mb-3">
-          <div class="card-body">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-              <h2 class="section-title mb-0">Markers</h2>
-              <button
-                type="button"
-                class="btn btn-warning btn-sm"
-                :disabled="controlsDisabled"
-                @click="store.addMarker()"
-              >
-                Add Marker
-              </button>
-            </div>
+      </section>
+
+      <aside class="card shadow-sm border-0 markers-sidebar">
+        <div class="card-body p-0 d-flex flex-column h-100">
+          <header class="px-3 py-3 border-bottom">
+            <h2 class="section-title mb-0">Markers</h2>
+          </header>
+          <div class="markers-list-wrap flex-grow-1">
             <ul class="list-group marker-list">
               <li
                 v-for="marker in store.markers"
                 :key="marker.id"
-                class="list-group-item d-flex align-items-center gap-2"
+                class="list-group-item marker-list-item"
                 :class="{ active: marker.id === store.activeMarkerId }"
               >
                 <button
@@ -538,9 +533,12 @@ onBeforeUnmount(() => {
                 </button>
               </li>
             </ul>
+            <div class="p-3 text-body-secondary small" v-if="store.markers.length === 0">
+              No markers yet. Add markers from the waveform.
+            </div>
           </div>
-        </section>
-      </section>
+        </div>
+      </aside>
     </div>
 
     <input

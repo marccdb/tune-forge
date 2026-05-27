@@ -81,6 +81,11 @@ function makeLoopSection(durationSec: number, startSec: number, endSec: number, 
   }
 }
 
+function normalizeTime(timeSec: number, durationSec: number): number {
+  const max = Math.max(durationSec, 0)
+  return clamp(timeSec, 0, max)
+}
+
 export const usePracticeStore = defineStore('practice', () => {
   const engine = new AudioEngine()
   const autosaveSuspended = ref(false)
@@ -630,6 +635,46 @@ export const usePracticeStore = defineStore('practice', () => {
     syncActiveLoopSectionToEngine()
   }
 
+  function setLoopBoundaryAtTime(boundary: 'start' | 'end', timeSec: number) {
+    const duration = durationSec.value || MIN_LOOP_DURATION_SEC
+    const clampedTime = normalizeTime(timeSec, duration)
+    let targetSectionId = activeLoopSectionId.value
+
+    if (!targetSectionId) {
+      const defaultStart = boundary === 'start' ? clampedTime : clamp(clampedTime - 4, 0, Math.max(0, duration - MIN_LOOP_DURATION_SEC))
+      const defaultEnd = boundary === 'end' ? clampedTime : clamp(clampedTime + 4, MIN_LOOP_DURATION_SEC, duration)
+      const created = makeLoopSection(duration, defaultStart, defaultEnd, `Section ${loopSections.value.length + 1}`)
+      loopSections.value = [...loopSections.value, created].sort((a, b) => a.startSec - b.startSec)
+      targetSectionId = created.id
+      activeLoopSectionId.value = created.id
+    }
+
+    loopSections.value = loopSections.value
+      .map((section) =>
+        section.id === targetSectionId
+          ? normalizeLoopSection(
+              {
+                ...section,
+                startSec: boundary === 'start' ? clampedTime : section.startSec,
+                endSec: boundary === 'end' ? clampedTime : section.endSec,
+              },
+              duration,
+            )
+          : section,
+      )
+      .sort((a, b) => a.startSec - b.startSec)
+
+    syncActiveLoopSectionToEngine()
+  }
+
+  function setLoopStartAtTime(timeSec: number) {
+    setLoopBoundaryAtTime('start', timeSec)
+  }
+
+  function setLoopEndAtTime(timeSec: number) {
+    setLoopBoundaryAtTime('end', timeSec)
+  }
+
   function resetLoop() {
     loop.value = createDefaultLoop(durationSec.value || 1)
     engine.setLoop(loop.value)
@@ -728,13 +773,32 @@ export const usePracticeStore = defineStore('practice', () => {
   }
 
   function addMarker(label = '') {
+    addMarkerAtTime(currentTimeSec.value, label)
+  }
+
+  function addMarkerAtTime(timeSec: number, label = '') {
+    const markerTime = normalizeTime(timeSec, durationSec.value || MIN_LOOP_DURATION_SEC)
     const marker: Marker = {
       id: nextId(),
       label: label || `M${markers.value.length + 1}`,
-      timeSec: currentTimeSec.value,
+      timeSec: markerTime,
     }
     markers.value = [...markers.value, marker].sort((a, b) => a.timeSec - b.timeSec)
     activeMarkerId.value = marker.id
+  }
+
+  function upsertNamedMarkerAtTime(label: string, timeSec: number) {
+    const markerTime = normalizeTime(timeSec, durationSec.value || MIN_LOOP_DURATION_SEC)
+    const existing = markers.value.find((marker) => marker.label.toLowerCase() === label.toLowerCase())
+    if (!existing) {
+      addMarkerAtTime(markerTime, label)
+      return
+    }
+
+    markers.value = markers.value
+      .map((marker) => (marker.id === existing.id ? { ...marker, label, timeSec: markerTime } : marker))
+      .sort((a, b) => a.timeSec - b.timeSec)
+    activeMarkerId.value = existing.id
   }
 
   function removeMarker(markerId: string) {
@@ -777,6 +841,13 @@ export const usePracticeStore = defineStore('practice', () => {
     if (isPlaying.value) {
       engine.pause()
     } else {
+      await engine.play()
+    }
+  }
+
+  async function playFrom(seconds: number) {
+    seek(seconds)
+    if (!isPlaying.value) {
       await engine.play()
     }
   }
@@ -851,9 +922,13 @@ export const usePracticeStore = defineStore('practice', () => {
     removeLoopSection,
     renameLoopSection,
     updateLoopSectionRange,
+    setLoopStartAtTime,
+    setLoopEndAtTime,
     setLoopSectionEnabled,
     setAllLoopSectionsEnabled,
     addMarker,
+    addMarkerAtTime,
+    upsertNamedMarkerAtTime,
     removeMarker,
     renameMarker,
     jumpToMarker,
@@ -861,6 +936,7 @@ export const usePracticeStore = defineStore('practice', () => {
     seek,
     seekBy,
     playPause,
+    playFrom,
     saveProject,
     teardown,
   }

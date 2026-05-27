@@ -8,35 +8,55 @@ import { usePracticeStore } from '../stores/practice'
 const store = usePracticeStore()
 
 const host = ref<HTMLElement | null>(null)
-const zoomPxPerSec = ref(0)
-const MIN_ZOOM_PX_PER_SEC = 0
-const MAX_ZOOM_PX_PER_SEC = 240
-const ZOOM_STEP = 12
+const scrollHost = ref<HTMLElement | null>(null)
+const contextMenuEl = ref<HTMLElement | null>(null)
+const fitPxPerSec = ref(1)
+const zoomFactor = ref(1.25)
+const MIN_ZOOM_FACTOR = 1
+const MAX_ZOOM_FACTOR = 8
+const ZOOM_STEP = 0.25
+const WHEEL_ZOOM_STEP = 0.1
+const A_MARKER_LINE_COLOR = '#e35353'
+const B_MARKER_LINE_COLOR = '#6ecce6'
+const REGULAR_MARKER_LINE_COLOR = '#e35353'
 
 let waveSurfer: WaveSurfer | null = null
 let regionsPlugin: ReturnType<typeof RegionsPlugin.create> | null = null
 const loopRegions = new Map<string, Region>()
-const markerRegions = new Map<string, Region>()
 let updatingLoopSectionFromRegion = false
+const isPanning = ref(false)
+let panStartX = 0
+let panStartScroll = 0
+let panDistance = 0
+let suppressClickFromPan = false
+const waveContentWidth = ref(0)
+const waveScrollLeft = ref(0)
+const onWindowResize = () => refreshFitZoom(0.5)
+
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  timeSec: 0,
+})
 
 const hasAudio = computed(() => Boolean(store.fileObjectUrl))
-const canZoomOut = computed(() => zoomPxPerSec.value > MIN_ZOOM_PX_PER_SEC)
-const canZoomIn = computed(() => zoomPxPerSec.value < MAX_ZOOM_PX_PER_SEC)
+const canZoomOut = computed(() => zoomFactor.value > MIN_ZOOM_FACTOR)
+const canZoomIn = computed(() => zoomFactor.value < MAX_ZOOM_FACTOR)
+const markerA = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'A') ?? null)
+const markerB = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'B') ?? null)
+const regularMarkers = computed(() =>
+  store.markers.filter((marker) => {
+    const normalized = marker.label.trim().toUpperCase()
+    return normalized !== 'A' && normalized !== 'B'
+  }),
+)
 
 function getWaveColors() {
-  const theme = document.documentElement.getAttribute('data-bs-theme')
-  if (theme === 'dark') {
-    return {
-      waveColor: '#5f89ff',
-      progressColor: '#b3c7ff',
-      cursorColor: '#f8f9fa',
-    }
-  }
-
   return {
-    waveColor: '#7ea3ff',
-    progressColor: '#1a2b59',
-    cursorColor: '#0f112f',
+    waveColor: '#b9c5d5',
+    progressColor: '#c59231',
+    cursorColor: '#ffffff',
   }
 }
 
@@ -50,54 +70,244 @@ function applyWaveTheme() {
   })
 }
 
-function applyZoom(pxPerSec: number) {
-  if (!waveSurfer) return
-  const clamped = Math.max(MIN_ZOOM_PX_PER_SEC, Math.min(MAX_ZOOM_PX_PER_SEC, pxPerSec))
-  zoomPxPerSec.value = clamped
+function getFitPxPerSec() {
+  if (!scrollHost.value || !store.durationSec) return 1
+  return Math.max(scrollHost.value.clientWidth / store.durationSec, 0.01)
+}
 
+function getWaveWrapper(): HTMLElement | null {
+  if (!waveSurfer) return null
+  return waveSurfer.getWrapper()
+}
+
+function applyZoom(zoomLevel: number, anchorRatio = 0.5) {
+  const clamped = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomLevel))
+  zoomFactor.value = clamped
+
+  if (!waveSurfer || !scrollHost.value) return
+
+  const hostEl = scrollHost.value
+  const wrapper = getWaveWrapper()
+  if (!wrapper) return
+  const previousWidth = Math.max(wrapper.scrollWidth, hostEl.clientWidth, 1)
+  const previousScrollLeft = wrapper.scrollLeft
+  const clampedAnchorRatio = clamp01(anchorRatio)
+  const anchorOffsetInViewport = clampedAnchorRatio * hostEl.clientWidth
+  const anchorPx = previousScrollLeft + anchorOffsetInViewport
+  const anchorPercent = anchorPx / previousWidth
+
+  const targetPxPerSec = fitPxPerSec.value * clamped
   if (typeof waveSurfer.zoom === 'function') {
-    waveSurfer.zoom(clamped)
-    return
+    waveSurfer.zoom(targetPxPerSec)
+  } else {
+    waveSurfer.setOptions({ minPxPerSec: targetPxPerSec })
   }
 
-  waveSurfer.setOptions({ minPxPerSec: clamped })
+  requestAnimationFrame(() => {
+    if (!waveSurfer || !scrollHost.value) return
+    const nextWrapper = getWaveWrapper()
+    if (!nextWrapper) return
+    const nextWidth = Math.max(nextWrapper.scrollWidth, scrollHost.value.clientWidth, 1)
+    const nextAnchorPx = anchorPercent * nextWidth
+    const nextScrollLeft = nextAnchorPx - anchorOffsetInViewport
+    const maxScrollLeft = Math.max(0, nextWidth - scrollHost.value.clientWidth)
+    nextWrapper.scrollLeft = Math.min(maxScrollLeft, Math.max(0, nextScrollLeft))
+    syncWaveMetrics()
+  })
+}
+
+function refreshFitZoom(anchorRatio = 0.5) {
+  fitPxPerSec.value = getFitPxPerSec()
+  applyZoom(zoomFactor.value, anchorRatio)
+}
+
+function anchorRatioFromClientX(clientX: number): number {
+  if (!scrollHost.value) return 0.5
+  const rect = scrollHost.value.getBoundingClientRect()
+  if (rect.width <= 0) return 0.5
+  return clamp01((clientX - rect.left) / rect.width)
+}
+
+function onWaveWheel(event: WheelEvent) {
+  if (!hasAudio.value) return
+  event.preventDefault()
+  const direction = event.deltaY < 0 ? 1 : -1
+  const nextZoom = zoomFactor.value + direction * WHEEL_ZOOM_STEP
+  applyZoom(nextZoom, anchorRatioFromClientX(event.clientX))
 }
 
 function zoomIn() {
-  applyZoom(zoomPxPerSec.value + ZOOM_STEP)
+  applyZoom(zoomFactor.value + ZOOM_STEP)
 }
 
 function zoomOut() {
-  applyZoom(zoomPxPerSec.value - ZOOM_STEP)
+  applyZoom(zoomFactor.value - ZOOM_STEP)
 }
 
 function resetZoom() {
-  applyZoom(MIN_ZOOM_PX_PER_SEC)
+  applyZoom(MIN_ZOOM_FACTOR)
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function syncWaveMetrics() {
+  if (!scrollHost.value) {
+    waveContentWidth.value = 0
+    waveScrollLeft.value = 0
+    return
+  }
+
+  const wrapper = getWaveWrapper()
+  if (!waveSurfer || !wrapper) {
+    waveContentWidth.value = scrollHost.value.clientWidth
+    waveScrollLeft.value = 0
+    return
+  }
+
+  const viewportWidth = scrollHost.value.clientWidth
+  const contentWidth = Math.max(wrapper.scrollWidth, viewportWidth)
+  waveContentWidth.value = contentWidth
+  const maxScrollLeft = Math.max(0, contentWidth - viewportWidth)
+  const clampedScrollLeft = Math.min(maxScrollLeft, Math.max(0, wrapper.scrollLeft))
+  if (wrapper.scrollLeft !== clampedScrollLeft) {
+    wrapper.scrollLeft = clampedScrollLeft
+  }
+  waveScrollLeft.value = clampedScrollLeft
+}
+
+function getMaxScrollLeft(): number {
+  if (!scrollHost.value) return 0
+  const wrapper = getWaveWrapper()
+  if (!wrapper) return 0
+  return Math.max(0, wrapper.scrollWidth - scrollHost.value.clientWidth)
+}
+
+function clampScrollLeft(next: number): number {
+  return Math.min(getMaxScrollLeft(), Math.max(0, next))
+}
+
+function markerLeftPx(timeSec: number): number {
+  if (!store.durationSec || waveContentWidth.value <= 0) return 0
+  return clamp01(timeSec / store.durationSec) * waveContentWidth.value
+}
+
+const markerAPositionPx = computed(() => (markerA.value ? markerLeftPx(markerA.value.timeSec) : null))
+const markerBPositionPx = computed(() => (markerB.value ? markerLeftPx(markerB.value.timeSec) : null))
+
+function closeContextMenu() {
+  contextMenu.value.visible = false
+}
+
+function clampMenuToWaveBounds() {
+  if (!scrollHost.value || !contextMenuEl.value) return
+  const margin = 6
+  const maxX = Math.max(margin, scrollHost.value.clientWidth - contextMenuEl.value.offsetWidth - margin)
+  const maxY = Math.max(margin, scrollHost.value.clientHeight - contextMenuEl.value.offsetHeight - margin)
+  contextMenu.value.x = Math.min(Math.max(contextMenu.value.x, margin), maxX)
+  contextMenu.value.y = Math.min(Math.max(contextMenu.value.y, margin), maxY)
+}
+
+function timeFromClientX(clientX: number): number | null {
+  if (!waveSurfer || !store.durationSec || !scrollHost.value) return null
+  const wrapper = getWaveWrapper()
+  if (!wrapper) return null
+  const rect = scrollHost.value.getBoundingClientRect()
+  const xInViewport = clamp01((clientX - rect.left) / Math.max(rect.width, 1)) * rect.width
+  const absoluteX = wrapper.scrollLeft + xInViewport
+  const relativeX = clamp01(absoluteX / Math.max(wrapper.scrollWidth, 1))
+  return relativeX * store.durationSec
+}
+
+function addMarkerAtContextTime() {
+  store.addMarkerAtTime(contextMenu.value.timeSec)
+  closeContextMenu()
+}
+
+function setLoopStartMarkerAtContextTime() {
+  store.upsertNamedMarkerAtTime('A', contextMenu.value.timeSec)
+  store.setLoopStartAtTime(contextMenu.value.timeSec)
+  closeContextMenu()
+}
+
+function setLoopEndMarkerAtContextTime() {
+  store.upsertNamedMarkerAtTime('B', contextMenu.value.timeSec)
+  store.setLoopEndAtTime(contextMenu.value.timeSec)
+  closeContextMenu()
+}
+
+function onWaveContextMenu(event: MouseEvent) {
+  if (!hasAudio.value || !scrollHost.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  const time = timeFromClientX(event.clientX)
+  if (time == null) return
+  const rect = scrollHost.value.getBoundingClientRect()
+  contextMenu.value = {
+    visible: true,
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+    timeSec: time,
+  }
+  requestAnimationFrame(clampMenuToWaveBounds)
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (!scrollHost.value || !hasAudio.value) return
+  if (event.button !== 0) return
+  const path = event.composedPath()
+  const isRegionHandle = path.some((node) => {
+    if (!(node instanceof HTMLElement)) return false
+    const part = node.getAttribute('part') || ''
+    return part.includes('region')
+  })
+  if (isRegionHandle) return
+  if (getMaxScrollLeft() <= 0) return
+
+  const wrapper = getWaveWrapper()
+  if (!wrapper) return
+  isPanning.value = true
+  panStartX = event.clientX
+  panStartScroll = wrapper.scrollLeft
+  panDistance = 0
+  scrollHost.value.setPointerCapture(event.pointerId)
+  closeContextMenu()
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!isPanning.value || !scrollHost.value) return
+  const wrapper = getWaveWrapper()
+  if (!wrapper) return
+  const deltaX = event.clientX - panStartX
+  panDistance = Math.max(panDistance, Math.abs(deltaX))
+  wrapper.scrollLeft = clampScrollLeft(panStartScroll - deltaX)
+  waveScrollLeft.value = wrapper.scrollLeft
+  event.preventDefault()
+}
+
+function onPointerUp(event: PointerEvent) {
+  if (!scrollHost.value) return
+  if (isPanning.value) {
+    isPanning.value = false
+    scrollHost.value.releasePointerCapture(event.pointerId)
+    suppressClickFromPan = panDistance > 4
+  }
+}
+
+function onWaveLeftClick(event: MouseEvent) {
+  if (!hasAudio.value) return
+  if (suppressClickFromPan) {
+    suppressClickFromPan = false
+    return
+  }
+  const time = timeFromClientX(event.clientX)
+  if (time == null) return
+  store.seek(time)
 }
 
 function refreshMarkers() {
-  if (!regionsPlugin) return
-  for (const region of markerRegions.values()) {
-    region.remove()
-  }
-  markerRegions.clear()
-
-  for (const marker of store.markers) {
-    const markerRegion = regionsPlugin.addRegion({
-      id: marker.id,
-      start: marker.timeSec,
-      end: Math.min(marker.timeSec + 0.02, store.durationSec || marker.timeSec + 0.02),
-      drag: false,
-      resize: false,
-      color: 'rgba(250, 154, 12, 0.9)',
-      content: marker.label,
-    })
-    markerRegion.on('click', (event) => {
-      event.preventDefault()
-      store.jumpToMarker(marker.id)
-    })
-    markerRegions.set(marker.id, markerRegion)
-  }
+  // Regular markers rendered by dedicated overlay for precise line/label styling.
 }
 
 function refreshLoopSections() {
@@ -145,7 +355,8 @@ function refreshLoopSections() {
 async function loadWaveform(url: string) {
   if (!waveSurfer) return
   await waveSurfer.load(url)
-  applyZoom(zoomPxPerSec.value)
+  refreshFitZoom(0)
+  syncWaveMetrics()
 }
 
 onMounted(() => {
@@ -157,18 +368,17 @@ onMounted(() => {
     container: host.value,
     waveColor: colors.waveColor,
     progressColor: colors.progressColor,
-    height: 180,
+    height: 270,
     cursorColor: colors.cursorColor,
-    cursorWidth: 2,
-    minPxPerSec: 0,
+    cursorWidth: 1,
+    minPxPerSec: 1,
     normalize: true,
     plugins: [regionsPlugin],
   })
 
-  waveSurfer.on('click', (relativeX) => {
-    if (!store.durationSec) return
-    store.seek(relativeX * store.durationSec)
-  })
+  const unsubscribeScroll = waveSurfer.on('scroll', syncWaveMetrics)
+  const unsubscribeRedraw = waveSurfer.on('redraw', syncWaveMetrics)
+  const unsubscribeZoom = waveSurfer.on('zoom', syncWaveMetrics)
 
   watch(
     () => store.fileObjectUrl,
@@ -180,6 +390,14 @@ onMounted(() => {
       })
     },
     { immediate: true },
+  )
+
+  watch(
+    () => store.durationSec,
+    (durationSec) => {
+      if (!durationSec) return
+      refreshFitZoom(0.5)
+    },
   )
 
   watch(
@@ -207,9 +425,18 @@ onMounted(() => {
 
   const observer = new MutationObserver(() => applyWaveTheme())
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] })
+  document.addEventListener('pointerdown', closeContextMenu)
+  window.addEventListener('resize', onWindowResize)
+  fitPxPerSec.value = getFitPxPerSec()
+  syncWaveMetrics()
 
   onBeforeUnmount(() => {
     observer.disconnect()
+    document.removeEventListener('pointerdown', closeContextMenu)
+    window.removeEventListener('resize', onWindowResize)
+    unsubscribeScroll()
+    unsubscribeRedraw()
+    unsubscribeZoom()
   })
 })
 
@@ -218,46 +445,85 @@ onBeforeUnmount(() => {
     region.remove()
   }
   loopRegions.clear()
-  for (const region of markerRegions.values()) {
-    region.remove()
-  }
-  markerRegions.clear()
   waveSurfer?.destroy()
 })
 </script>
 
 <template>
   <section class="waveform-shell">
-    <header class="wave-head">
-      <h2>Waveform</h2>
-      <div class="wave-controls">
-        <span v-if="hasAudio">Click waveform to seek. Add/select sections to loop. Drag section to edit.</span>
-        <span v-else>Import audio file to start.</span>
-        <div class="zoom-controls">
-          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="zoomOut">
-            -
-          </button>
-          <input
-            :value="zoomPxPerSec"
-            class="form-range zoom-slider"
-            type="range"
-            :min="MIN_ZOOM_PX_PER_SEC"
-            :max="MAX_ZOOM_PX_PER_SEC"
-            :step="ZOOM_STEP"
-            :disabled="!hasAudio"
-            @input="applyZoom(Number(($event.target as HTMLInputElement).value))"
-          />
-          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomIn" @click="zoomIn">
-            +
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="resetZoom">
-            1:1
-          </button>
+    <div class="wave-controls">
+      <div class="zoom-controls">
+        <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="zoomOut">
+          -
+        </button>
+        <input
+          :value="zoomFactor"
+          class="form-range zoom-slider"
+          type="range"
+          :min="MIN_ZOOM_FACTOR"
+          :max="MAX_ZOOM_FACTOR"
+          :step="ZOOM_STEP"
+          :disabled="!hasAudio"
+          @input="applyZoom(Number(($event.target as HTMLInputElement).value))"
+        />
+        <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomIn" @click="zoomIn">
+          +
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!hasAudio || !canZoomOut" @click="resetZoom">
+          1:1
+        </button>
+      </div>
+    </div>
+    <div
+      ref="scrollHost"
+      class="wave-scroll"
+      :class="{ 'is-empty': !hasAudio, 'is-panning': isPanning }"
+      @click.left="onWaveLeftClick"
+      @contextmenu.prevent.stop="onWaveContextMenu"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+      @wheel.prevent="onWaveWheel"
+    >
+      <div ref="host" class="waveform-host" />
+      <div class="ab-markers-overlay" :style="{ width: `${waveContentWidth}px`, transform: `translateX(${-waveScrollLeft}px)` }">
+        <div
+          v-for="marker in regularMarkers"
+          :key="marker.id"
+          class="regular-marker"
+          :style="{ left: `${markerLeftPx(marker.timeSec)}px`, '--marker-line-color': REGULAR_MARKER_LINE_COLOR }"
+        >
+          <span class="regular-marker-label">{{ marker.label }}</span>
+        </div>
+        <div
+          v-if="markerAPositionPx !== null"
+          class="ab-marker ab-marker-a"
+          :style="{ left: `${markerAPositionPx}px`, '--ab-marker-color': A_MARKER_LINE_COLOR }"
+        >
+          <span class="ab-marker-label">A</span>
+        </div>
+        <div
+          v-if="markerBPositionPx !== null"
+          class="ab-marker ab-marker-b"
+          :style="{ left: `${markerBPositionPx}px`, '--ab-marker-color': B_MARKER_LINE_COLOR }"
+        >
+          <span class="ab-marker-label">B</span>
         </div>
       </div>
-    </header>
-    <div class="wave-scroll" :class="{ 'is-empty': !hasAudio }">
-      <div ref="host" class="waveform-host" />
+      <div
+        v-if="contextMenu.visible"
+        ref="contextMenuEl"
+        class="wave-context-menu"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @pointerdown.stop
+        @click.stop
+      >
+        <button type="button" class="btn btn-sm btn-light" @click="addMarkerAtContextTime">Add Marker Here</button>
+        <button type="button" class="btn btn-sm btn-light" @click="setLoopStartMarkerAtContextTime">Set Loop Start (A)</button>
+        <button type="button" class="btn btn-sm btn-light" @click="setLoopEndMarkerAtContextTime">Set Loop End (B)</button>
+        <div class="context-time">{{ contextMenu.timeSec.toFixed(2) }}s</div>
+      </div>
     </div>
   </section>
 </template>
@@ -266,51 +532,33 @@ onBeforeUnmount(() => {
 .waveform-shell {
   border: 1px solid var(--bs-border-color);
   border-radius: 0.75rem;
-  padding: 0.75rem;
-  background: var(--bs-secondary-bg);
-}
-
-.wave-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.wave-head h2 {
-  margin: 0;
-  font-size: 0.9rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--bs-secondary-color);
-}
-
-.wave-head span {
-  font-size: 0.82rem;
-  color: var(--bs-secondary-color);
+  padding: 0.35rem;
+  background: #223343;
+  position: relative;
 }
 
 .wave-controls {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 10px;
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
 }
 
 .zoom-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--bs-body-bg) 84%, transparent);
+  gap: 6px;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(213, 225, 240, 0.2);
+  border-radius: 0.45rem;
+  background: rgba(14, 30, 50, 0.64);
 }
 
 .zoom-slider {
-  width: 220px;
+  width: 180px;
   height: 1.25rem;
   margin: 0;
   accent-color: var(--bs-primary);
@@ -319,8 +567,16 @@ onBeforeUnmount(() => {
 .wave-scroll {
   position: relative;
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
+  margin-top: 0;
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, rgba(49, 84, 122, 0.94) 0%, rgba(33, 66, 104, 0.96) 55%, rgba(18, 45, 79, 0.98) 100%);
+}
+
+.wave-scroll.is-panning {
+  cursor: grabbing;
 }
 
 .wave-scroll.is-empty::before {
@@ -346,7 +602,102 @@ onBeforeUnmount(() => {
 }
 
 .waveform-host {
-  min-height: 180px;
-  min-width: 100%;
+  position: relative;
+  z-index: 1;
+  min-height: 270px;
+  width: 100%;
+}
+
+.ab-markers-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.regular-marker {
+  --marker-line-color: #e35353;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--marker-line-color);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 0 8px rgba(227, 83, 83, 0.2);
+}
+
+.regular-marker-label {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 28px;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.28rem;
+  border: 1px solid rgba(14, 25, 38, 0.8);
+  background: #d6ccbb;
+  color: #1a1a1a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.ab-marker {
+  --ab-marker-color: #ffffff;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ab-marker-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.ab-marker-label {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 22px;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.34rem;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  color: #111;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+  background: color-mix(in srgb, var(--ab-marker-color) 86%, #ffffff 14%);
+}
+
+.wave-context-menu {
+  position: absolute;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--bs-body-bg) 92%, var(--bs-secondary-bg));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.wave-context-menu .btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.context-time {
+  font-size: 0.72rem;
+  color: var(--bs-secondary-color);
+  text-align: right;
 }
 </style>
