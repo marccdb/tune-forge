@@ -1,11 +1,19 @@
 name: Desktop CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
       - main
       - feat/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
@@ -108,3 +116,52 @@ jobs:
         run: npm run qa:package-smoke
         env:
           PACKAGE_SMOKE_TARGET: ${{ matrix.target }}
+
+  desktop-build-artifacts:
+    name: Desktop build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-appimage
+            os: ubuntu-latest
+            build_args: --linux AppImage --x64 --publish never
+            artifact_glob: app/release/*.AppImage
+          - name: windows-x64
+            os: windows-latest
+            build_args: --win nsis --x64 --publish never
+            artifact_glob: app/release/*.exe
+          - name: macos-arm64
+            os: macos-14
+            build_args: --mac dmg --arm64 --publish never
+            artifact_glob: app/release/*.dmg
+    defaults:
+      run:
+        working-directory: app
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build desktop artifacts
+        run: npm run dist:desktop -- ${{ matrix.build_args }}
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.artifact_glob }}
+          retention-days: 14
+          if-no-files-found: error
