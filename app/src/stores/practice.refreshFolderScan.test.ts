@@ -13,6 +13,9 @@ vi.mock('../lib/audioEngine', () => {
     async loadFile() {
       return 0
     }
+    async loadArrayBuffer() {
+      return 0
+    }
     async play() {}
     pause() {}
     seek() {}
@@ -59,49 +62,18 @@ vi.mock('../lib/folderLibraryRepository', () => {
   return { IndexedDbFolderLibraryRepository: MockFolderLibraryRepository }
 })
 
-type PermissionStateLike = 'granted' | 'prompt' | 'denied'
-
-type MockDirectoryHandle = {
-  name: string
-  values: ReturnType<typeof vi.fn>
-  queryPermission?: ReturnType<typeof vi.fn>
-  requestPermission?: ReturnType<typeof vi.fn>
-}
-
-function createAudioDirectoryHandle(permission: {
-  query: PermissionStateLike
-  request?: PermissionStateLike
-}) {
-  const file = new File(['audio-data'], 'song.mp3', { type: 'audio/mpeg' })
-  const fileEntry = {
-    kind: 'file',
-    name: 'song.mp3',
-    getFile: vi.fn(async () => file),
-  }
-
-  const values = vi.fn(async function* () {
-    yield fileEntry
-  })
-
-  const handle: MockDirectoryHandle = {
-    name: 'Practice',
-    values,
-    queryPermission: vi.fn(async () => permission.query),
-  }
-
-  if (permission.request) {
-    handle.requestPermission = vi.fn(async () => permission.request as PermissionState)
-  }
-
+function makeDesktopTrack(id: string) {
   return {
-    handle: handle as unknown as FileSystemDirectoryHandle,
-    valuesSpy: values,
-    queryPermissionSpy: handle.queryPermission,
-    requestPermissionSpy: handle.requestPermission,
+    id,
+    name: `${id}.mp3`,
+    relativePath: `${id}.mp3`,
+    fingerprint: `${id}.mp3:1:1`,
+    lastModified: 1,
+    size: 1,
   }
 }
 
-describe('practice store refreshFolderScan permission flow', () => {
+describe('practice store refreshFolderScan desktop flow', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     mockLibrarySnapshot = undefined
@@ -110,103 +82,220 @@ describe('practice store refreshFolderScan permission flow', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
-    delete (window as Window & { showDirectoryPicker?: unknown }).showDirectoryPicker
+    delete window.desktopApi
     mockLibrarySnapshot = undefined
   })
 
-  it('queryPermission=granted scans and keeps folderConnected=true', async () => {
-    const { handle, valuesSpy, queryPermissionSpy, requestPermissionSpy } = createAudioDirectoryHandle({
-      query: 'granted',
-    })
-    Object.defineProperty(window, 'showDirectoryPicker', {
-      configurable: true,
-      value: vi.fn(async () => handle),
-    })
-
-    const store = usePracticeStore()
-    await store.importFolder()
-    valuesSpy.mockClear()
-
-    await store.refreshFolderScan()
-
-    expect(queryPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-    expect(requestPermissionSpy).toBeUndefined()
-    expect(valuesSpy).toHaveBeenCalledTimes(1)
-    expect(store.folderConnected).toBe(true)
-    expect(store.scanError).toBe('')
-    expect(store.tracks.length).toBe(1)
-  })
-
-  it('queryPermission=prompt and requestPermission=granted scans', async () => {
-    const { handle, valuesSpy, queryPermissionSpy, requestPermissionSpy } = createAudioDirectoryHandle({
-      query: 'prompt',
-      request: 'granted',
-    })
-    Object.defineProperty(window, 'showDirectoryPicker', {
-      configurable: true,
-      value: vi.fn(async () => handle),
-    })
-
-    const store = usePracticeStore()
-    await store.importFolder()
-    valuesSpy.mockClear()
-
-    await store.refreshFolderScan()
-
-    expect(queryPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-    expect(requestPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-    expect(valuesSpy).toHaveBeenCalledTimes(1)
-    expect(store.folderConnected).toBe(true)
-    expect(store.scanError).toBe('')
-  })
-
-  it.each([
-    { query: 'prompt' as const, request: 'denied' as const },
-    { query: 'denied' as const, request: 'prompt' as const },
-  ])(
-    'queryPermission=$query and requestPermission=$request sets error, folderConnected=false, no scan',
-    async ({ query, request }) => {
-      const { handle, valuesSpy, queryPermissionSpy, requestPermissionSpy } = createAudioDirectoryHandle({
-        query,
-        request,
-      })
-      Object.defineProperty(window, 'showDirectoryPicker', {
-        configurable: true,
-        value: vi.fn(async () => handle),
-      })
-
-      const store = usePracticeStore()
-      await store.importFolder()
-      valuesSpy.mockClear()
-      store.scanError = ''
-      store.folderConnected = true
-
-      await store.refreshFolderScan()
-
-      expect(queryPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-      expect(requestPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-      expect(valuesSpy).not.toHaveBeenCalled()
-      expect(store.scanError).toBe('Folder permission missing. Reconnect with Import Folder.')
-      expect(store.folderConnected).toBe(false)
-    },
-  )
-
-  it('no folderHandle returns early error', async () => {
+  it('refreshFolderScan without desktop folder returns early error', async () => {
     const store = usePracticeStore()
 
     await store.refreshFolderScan()
 
-    expect(store.scanError).toBe('No connected folder handle. Re-import folder.')
+    expect(store.scanError).toBe('Folder refresh unavailable. Re-import folder.')
     expect(store.folderConnected).toBe(false)
     expect(store.isScanning).toBe(false)
   })
 
-  it('restoreLastFolder checks permission without prompting', async () => {
-    const { handle, queryPermissionSpy, requestPermissionSpy } = createAudioDirectoryHandle({
-      query: 'denied',
-      request: 'granted',
-    })
+  it('desktop import + refresh uses desktopApi.refreshFolder(folderId)', async () => {
+    const pickFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        folderId: 'folder-1',
+        folderName: 'Practice',
+        tracks: [makeDesktopTrack('a')],
+      },
+    }))
+    const refreshFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        tracks: [makeDesktopTrack('b')],
+      },
+    }))
+    const readTrack = vi.fn(async () => ({
+      ok: true as const,
+      data: { name: 'b.mp3', mimeType: 'audio/mpeg', arrayBuffer: new ArrayBuffer(0) },
+    }))
 
+    window.desktopApi = { pickFolder, refreshFolder, readTrack }
+
+    const store = usePracticeStore()
+    await store.importFolder()
+    await store.refreshFolderScan()
+
+    expect(pickFolder).toHaveBeenCalledTimes(1)
+    expect(refreshFolder).toHaveBeenCalledWith('folder-1')
+    expect(store.folderConnected).toBe(true)
+    expect(store.scanError).toBe('')
+    expect(store.tracks.length).toBe(1)
+    expect(store.tracks[0].sourceType).toBe('desktop-directory')
+  })
+
+  it('cancelled folder picker keeps existing folder state intact', async () => {
+    const pickFolder = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true as const,
+        data: {
+          folderId: 'folder-1',
+          folderName: 'Practice',
+          tracks: [makeDesktopTrack('a')],
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: false as const,
+        code: 'PICKER_CANCELLED',
+        message: 'Folder selection cancelled.',
+      })
+    const refreshFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: { tracks: [makeDesktopTrack('a')] },
+    }))
+    const readTrack = vi.fn(async () => ({
+      ok: true as const,
+      data: { name: 'a.mp3', mimeType: 'audio/mpeg', arrayBuffer: new ArrayBuffer(0) },
+    }))
+
+    window.desktopApi = { pickFolder, refreshFolder, readTrack }
+
+    const store = usePracticeStore()
+    await store.importFolder()
+    expect(store.folderConnected).toBe(true)
+    expect(store.tracks.map((track) => track.id)).toEqual(['a'])
+
+    await store.importFolder()
+
+    expect(store.folderConnected).toBe(true)
+    expect(store.scanError).toBe('')
+    expect(store.tracks.map((track) => track.id)).toEqual(['a'])
+  })
+
+  it('refreshFolder failure maps error and disconnects folder', async () => {
+    const pickFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        folderId: 'folder-1',
+        folderName: 'Practice',
+        tracks: [makeDesktopTrack('a')],
+      },
+    }))
+    const refreshFolder = vi.fn(async () => ({
+      ok: false as const,
+      code: 'folder_unavailable',
+      message: 'Folder moved or unavailable.',
+    }))
+    const readTrack = vi.fn(async () => ({
+      ok: true as const,
+      data: { name: 'a.mp3', mimeType: 'audio/mpeg', arrayBuffer: new ArrayBuffer(0) },
+    }))
+
+    window.desktopApi = { pickFolder, refreshFolder, readTrack }
+
+    const store = usePracticeStore()
+    await store.importFolder()
+    await store.refreshFolderScan()
+
+    expect(refreshFolder).toHaveBeenCalledWith('folder-1')
+    expect(store.scanError).toBe('Folder moved or unavailable.')
+    expect(store.folderConnected).toBe(false)
+  })
+
+  it('refreshFolder clears activeTrackId when current track no longer exists', async () => {
+    const pickFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        folderId: 'folder-1',
+        folderName: 'Practice',
+        tracks: [makeDesktopTrack('a')],
+      },
+    }))
+    const refreshFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        tracks: [makeDesktopTrack('b')],
+      },
+    }))
+    const readTrack = vi.fn(async () => ({
+      ok: true as const,
+      data: { name: 'a.mp3', mimeType: 'audio/mpeg', arrayBuffer: new ArrayBuffer(0) },
+    }))
+
+    window.desktopApi = { pickFolder, refreshFolder, readTrack }
+
+    const store = usePracticeStore()
+    await store.importFolder()
+    store.activeTrackId = 'a'
+
+    await store.refreshFolderScan()
+
+    expect(store.activeTrackId).toBeNull()
+    expect(store.tracks.map((track) => track.id)).toEqual(['b'])
+  })
+
+  it('refreshFolder reports desktop api unavailable when bridge missing', async () => {
+    const pickFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        folderId: 'folder-1',
+        folderName: 'Practice',
+        tracks: [makeDesktopTrack('a')],
+      },
+    }))
+    const refreshFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        tracks: [makeDesktopTrack('b')],
+      },
+    }))
+    const readTrack = vi.fn(async () => ({
+      ok: true as const,
+      data: { name: 'a.mp3', mimeType: 'audio/mpeg', arrayBuffer: new ArrayBuffer(0) },
+    }))
+
+    window.desktopApi = { pickFolder, refreshFolder, readTrack }
+
+    const store = usePracticeStore()
+    await store.importFolder()
+    delete window.desktopApi
+
+    await store.refreshFolderScan()
+
+    expect(store.scanError).toBe('Desktop API unavailable. Restart app and retry.')
+    expect(store.folderConnected).toBe(false)
+    expect(store.isScanning).toBe(false)
+  })
+
+  it('restoreLastFolder with desktop source + empty tracks triggers refresh', async () => {
+    const refreshFolder = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        tracks: [makeDesktopTrack('song')],
+      },
+    }))
+
+    mockLibrarySnapshot = {
+      folderName: 'Practice',
+      tracks: [],
+      activeTrackId: null,
+      sourceType: 'desktop-directory',
+      folderId: 'folder-1',
+      updatedAt: new Date(0).toISOString(),
+    }
+
+    window.desktopApi = {
+      pickFolder: vi.fn(),
+      refreshFolder,
+      readTrack: vi.fn(),
+    }
+
+    const store = usePracticeStore()
+    await store.restoreLastFolder()
+
+    expect(refreshFolder).toHaveBeenCalledWith('folder-1')
+    expect(store.folderConnected).toBe(true)
+    expect(store.tracks.map((track) => track.id)).toEqual(['song'])
+  })
+
+  it('restoreLastFolder warns when desktopApi missing for desktop snapshot', async () => {
     mockLibrarySnapshot = {
       folderName: 'Practice',
       tracks: [
@@ -217,21 +306,19 @@ describe('practice store refreshFolderScan permission flow', () => {
           fingerprint: 'song.mp3',
           lastModified: 1,
           size: 1,
-          sourceType: 'directory-handle',
+          sourceType: 'desktop-directory',
         },
       ],
       activeTrackId: null,
-      sourceType: 'directory-handle',
-      directoryHandle: handle,
+      sourceType: 'desktop-directory',
+      folderId: 'folder-1',
       updatedAt: new Date(0).toISOString(),
     }
 
     const store = usePracticeStore()
     await store.restoreLastFolder()
 
-    expect(queryPermissionSpy).toHaveBeenCalledWith({ mode: 'read' })
-    expect(requestPermissionSpy).toHaveBeenCalledTimes(0)
     expect(store.folderConnected).toBe(false)
-    expect(store.scanError).toBe('Folder permission missing. Reconnect with Import Folder.')
+    expect(store.scanError).toBe('Desktop API unavailable. Re-import folder.')
   })
 })

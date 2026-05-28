@@ -131,7 +131,7 @@ describe('App refresh button permission UI', () => {
           fingerprint: 'song.mp3',
           lastModified: 1,
           size: 1,
-          sourceType: 'directory-handle',
+          sourceType: 'desktop-directory',
         },
       ],
       folderConnected: true,
@@ -150,5 +150,16 @@ describe('App refresh button permission UI', () => {
     })
     expect(screen.getByText(deniedMessage)).toBeTruthy()
     expect(screen.getByText('Reconnect folder to load tracks.')).toBeTruthy()
+  })
+
+  it('does not call refresh when refresh button is disabled', async () => {
+    mockStore = createMockStore({ hasDirectoryHandle: false })
+
+    render(App)
+    const refreshButton = screen.getByRole('button', { name: 'Refresh' })
+
+    expect(refreshButton.hasAttribute('disabled')).toBe(true)
+    refreshButton.click()
+    expect(mockStore.refreshFolderScan).toHaveBeenCalledTimes(0)
   })
 })

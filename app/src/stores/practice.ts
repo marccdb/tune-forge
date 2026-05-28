@@ -16,10 +16,10 @@ import {
   createTrackIndexId,
   getRelativePathFromInputFile,
   isSupportedMediaFile,
-  normalizeRelativePath,
   sortTracksByPath,
 } from '../lib/folderLibrary'
 import { IndexedDbFolderLibraryRepository } from '../lib/folderLibraryRepository'
+import type { DesktopApi, DesktopTrack } from '../types/desktopApi'
 import type {
   FolderTrack,
   LibrarySnapshot,
@@ -87,23 +87,21 @@ function normalizeTime(timeSec: number, durationSec: number): number {
   return clamp(timeSec, 0, max)
 }
 
-type PermissionQueryHandle = FileSystemDirectoryHandle & {
-  queryPermission?: (descriptor: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>
-  requestPermission?: (descriptor: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>
+function getDesktopApi(): DesktopApi | null {
+  if (typeof window === 'undefined') return null
+  return window.desktopApi ?? null
 }
 
-async function getDirectoryReadPermission(
-  handle: FileSystemDirectoryHandle,
-  policy: 'check-only' | 'check-then-request',
-): Promise<PermissionState> {
-  const permissionHandle = handle as PermissionQueryHandle
-  const permission = permissionHandle.queryPermission
-    ? await permissionHandle.queryPermission({ mode: 'read' })
-    : 'granted'
-  if (permission === 'granted' || policy === 'check-only') {
-    return permission
+function toDesktopFolderTrack(track: DesktopTrack): FolderTrack {
+  return {
+    id: track.id,
+    name: track.name,
+    relativePath: track.relativePath,
+    fingerprint: track.fingerprint,
+    lastModified: track.lastModified,
+    size: track.size,
+    sourceType: 'desktop-directory',
   }
-  return permissionHandle.requestPermission ? await permissionHandle.requestPermission({ mode: 'read' }) : permission
 }
 
 export const usePracticeStore = defineStore('practice', () => {
@@ -117,7 +115,11 @@ export const usePracticeStore = defineStore('practice', () => {
   const isScanning = ref(false)
   const scanError = ref('')
   const folderConnected = ref(false)
-  const hasDirectoryHandle = computed(() => folderHandle.value !== null)
+  const folderId = ref<string | null>(null)
+  const librarySourceType = ref<LibrarySnapshot['sourceType'] | null>(null)
+  const hasDirectoryHandle = computed(
+    () => librarySourceType.value === 'desktop-directory' && Boolean(folderId.value),
+  )
 
   const projectId = ref('')
   const trackName = ref('')
@@ -141,7 +143,6 @@ export const usePracticeStore = defineStore('practice', () => {
   const activeMarkerId = ref<string | null>(null)
   const error = ref('')
   const loadedFile = ref<File | null>(null)
-  const folderHandle = ref<FileSystemDirectoryHandle | null>(null)
   const transientFiles = new Map<string, File>()
 
   const currentProject = computed<PracticeProject | null>(() => {
@@ -219,7 +220,11 @@ export const usePracticeStore = defineStore('practice', () => {
     unsubscribeLoaded()
   }
 
-  async function importFile(file: File, trackContext?: { relativePath?: string | null }): Promise<void> {
+  async function importFile(
+    file: File,
+    trackContext?: { relativePath?: string | null },
+    preloadedBuffer?: ArrayBuffer,
+  ): Promise<void> {
     autosaveSuspended.value = true
     isImporting.value = true
 
@@ -228,7 +233,7 @@ export const usePracticeStore = defineStore('practice', () => {
       const nextFingerprint = makeFingerprint(file)
       const nextProjectId = makeProjectKey(file, trackContext?.relativePath)
 
-      await engine.loadFile(file)
+      await engine.loadArrayBuffer(preloadedBuffer ?? (await file.arrayBuffer()))
       const nextFileObjectUrl = URL.createObjectURL(file)
       const previousFileObjectUrl = fileObjectUrl.value
 
@@ -266,9 +271,8 @@ export const usePracticeStore = defineStore('practice', () => {
 
       if (!trackContext?.relativePath) {
         activeTrackId.value = null
-        const snapshotSourceType = folderHandle.value ? 'directory-handle' : 'webkitdirectory'
         try {
-          await saveLibrarySnapshot(snapshotSourceType)
+          await saveLibrarySnapshot()
         } catch (saveIssue) {
           console.warn('Failed to persist cleared library selection.', saveIssue)
         }
@@ -279,13 +283,13 @@ export const usePracticeStore = defineStore('practice', () => {
     }
   }
 
-  function makeLibrarySnapshot(sourceType: 'directory-handle' | 'webkitdirectory'): LibrarySnapshot {
+  function makeLibrarySnapshot(sourceType: LibrarySnapshot['sourceType']): LibrarySnapshot {
     return {
       folderName: folderName.value,
       tracks: tracks.value,
       activeTrackId: activeTrackId.value,
       sourceType,
-      directoryHandle: sourceType === 'directory-handle' ? folderHandle.value : null,
+      folderId: sourceType === 'desktop-directory' ? folderId.value : null,
       updatedAt: new Date().toISOString(),
     }
   }
@@ -294,43 +298,8 @@ export const usePracticeStore = defineStore('practice', () => {
     transientFiles.clear()
   }
 
-  async function saveLibrarySnapshot(sourceType: 'directory-handle' | 'webkitdirectory') {
+  async function saveLibrarySnapshot(sourceType = librarySourceType.value ?? 'webkitdirectory') {
     await libraryRepository.saveSnapshot(makeLibrarySnapshot(sourceType))
-  }
-
-  async function scanDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<FolderTrack[]> {
-    const discoveredTracks: FolderTrack[] = []
-    const seenTrackIds = new Set<string>()
-    clearTransientFiles()
-
-    async function walkDirectory(current: FileSystemDirectoryHandle, prefix: string) {
-      for await (const entry of current.values()) {
-        if (entry.kind === 'directory') {
-          const childPath = prefix ? `${prefix}/${entry.name}` : entry.name
-          await walkDirectory(entry, childPath)
-          continue
-        }
-
-        const fileHandle = entry as FileSystemFileHandle
-        const file = await fileHandle.getFile()
-        if (!isSupportedMediaFile(file)) {
-          continue
-        }
-
-        const relativePath = normalizeRelativePath(prefix ? `${prefix}/${entry.name}` : entry.name)
-        const baseTrack = createFolderTrack(file, relativePath, 'directory-handle')
-        const trackId = seenTrackIds.has(baseTrack.id)
-          ? createTrackIndexId(relativePath, file.lastModified, file.size)
-          : baseTrack.id
-        const track = { ...baseTrack, id: trackId }
-        seenTrackIds.add(track.id)
-        discoveredTracks.push(track)
-        transientFiles.set(track.id, file)
-      }
-    }
-
-    await walkDirectory(handle, '')
-    return sortTracksByPath(discoveredTracks)
   }
 
   function buildTracksFromInputFiles(files: Iterable<File>): FolderTrack[] {
@@ -352,25 +321,27 @@ export const usePracticeStore = defineStore('practice', () => {
     return sortTracksByPath(discoveredTracks)
   }
 
-  async function loadTrackFile(track: FolderTrack): Promise<File> {
+  async function loadTrackFile(track: FolderTrack): Promise<{ file: File; arrayBuffer?: ArrayBuffer }> {
     const directFile = transientFiles.get(track.id)
-    if (directFile) return directFile
+    if (directFile) return { file: directFile }
 
-    if (track.sourceType === 'directory-handle' && folderHandle.value) {
-      const pathParts = normalizeRelativePath(track.relativePath).split('/').filter(Boolean)
-      if (pathParts.length === 0) {
-        throw new Error('Track path is empty.')
+    if (track.sourceType === 'desktop-directory' && folderId.value) {
+      const desktopApi = getDesktopApi()
+      if (!desktopApi) {
+        throw new Error('Desktop API unavailable. Restart app and retry folder import.')
       }
 
-      let current = folderHandle.value
-      for (const segment of pathParts.slice(0, -1)) {
-        current = await current.getDirectoryHandle(segment)
+      const response = await desktopApi.readTrack(folderId.value, track.relativePath)
+      if (!response.ok) {
+        throw new Error(response.message || 'Failed to read selected track.')
       }
 
-      const fileHandle = await current.getFileHandle(pathParts[pathParts.length - 1])
-      const file = await fileHandle.getFile()
+      const file = new File([response.data.arrayBuffer], response.data.name, {
+        type: response.data.mimeType || 'application/octet-stream',
+        lastModified: track.lastModified,
+      })
       transientFiles.set(track.id, file)
-      return file
+      return { file, arrayBuffer: response.data.arrayBuffer }
     }
 
     throw new Error('Track file unavailable. Re-import folder to reconnect files.')
@@ -384,11 +355,11 @@ export const usePracticeStore = defineStore('practice', () => {
     scanError.value = ''
     loadingTrackId.value = trackId
     try {
-      const file = await loadTrackFile(track)
-      await importFile(file, { relativePath: track.relativePath })
+      const loadedTrack = await loadTrackFile(track)
+      await importFile(loadedTrack.file, { relativePath: track.relativePath }, loadedTrack.arrayBuffer)
       activeTrackId.value = trackId
       folderConnected.value = true
-      await saveLibrarySnapshot(track.sourceType)
+      await saveLibrarySnapshot()
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load selected track.'
       scanError.value = message
@@ -399,31 +370,39 @@ export const usePracticeStore = defineStore('practice', () => {
   }
 
   async function importFolder(): Promise<void> {
-    const pickerWindow = window as Window & { showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle> }
-    if (!pickerWindow.showDirectoryPicker) {
-      scanError.value = 'Folder picker unavailable in this browser. Use fallback folder input.'
+    const desktopApi = getDesktopApi()
+    if (!desktopApi) {
+      scanError.value = 'Desktop folder import unavailable. Use fallback folder input.'
       return
     }
 
     isScanning.value = true
     scanError.value = ''
     try {
-      const handle = await pickerWindow.showDirectoryPicker()
-      folderHandle.value = handle
-      folderName.value = handle.name
-      tracks.value = await scanDirectoryHandle(handle)
+      const response = await desktopApi.pickFolder()
+      if (!response.ok) {
+        if (response.code === 'PICKER_CANCELLED') {
+          return
+        }
+        scanError.value = response.message || 'Unable to import folder.'
+        folderConnected.value = false
+        return
+      }
+
+      folderId.value = response.data.folderId
+      folderName.value = response.data.folderName
+      tracks.value = sortTracksByPath(response.data.tracks.map(toDesktopFolderTrack))
+      librarySourceType.value = 'desktop-directory'
       activeTrackId.value = null
       folderConnected.value = true
+      clearTransientFiles()
 
       if (tracks.value.length === 0) {
         scanError.value = 'No songs found.'
       }
 
-      await saveLibrarySnapshot('directory-handle')
+      await saveLibrarySnapshot('desktop-directory')
     } catch (scanIssue) {
-      if (scanIssue instanceof DOMException && scanIssue.name === 'AbortError') {
-        return
-      }
       const message = scanIssue instanceof Error ? scanIssue.message : 'Unable to import folder.'
       scanError.value = message
       folderConnected.value = false
@@ -439,7 +418,8 @@ export const usePracticeStore = defineStore('practice', () => {
       const files = Array.from(fileList)
       tracks.value = buildTracksFromInputFiles(files)
       activeTrackId.value = null
-      folderHandle.value = null
+      folderId.value = null
+      librarySourceType.value = 'webkitdirectory'
       folderConnected.value = true
 
       const firstRelativePath = tracks.value[0]?.relativePath || (files[0] ? getRelativePathFromInputFile(files[0]) : '')
@@ -457,22 +437,30 @@ export const usePracticeStore = defineStore('practice', () => {
   }
 
   async function refreshFolderScan(): Promise<void> {
+    if (isScanning.value) return
     scanError.value = ''
-    if (!folderHandle.value) {
-      scanError.value = 'No connected folder handle. Re-import folder.'
+    if (librarySourceType.value !== 'desktop-directory' || !folderId.value) {
+      scanError.value = 'Folder refresh unavailable. Re-import folder.'
       return
     }
 
     isScanning.value = true
     try {
-      const permission = await getDirectoryReadPermission(folderHandle.value, 'check-then-request')
-      if (permission !== 'granted') {
-        scanError.value = 'Folder permission missing. Reconnect with Import Folder.'
+      const desktopApi = getDesktopApi()
+      if (!desktopApi) {
+        scanError.value = 'Desktop API unavailable. Restart app and retry.'
         folderConnected.value = false
         return
       }
 
-      tracks.value = await scanDirectoryHandle(folderHandle.value)
+      const response = await desktopApi.refreshFolder(folderId.value)
+      if (!response.ok) {
+        scanError.value = response.message || 'Failed to refresh folder.'
+        folderConnected.value = false
+        return
+      }
+
+      tracks.value = sortTracksByPath(response.data.tracks.map(toDesktopFolderTrack))
       folderConnected.value = true
       if (tracks.value.length === 0) {
         scanError.value = 'No songs found.'
@@ -482,7 +470,8 @@ export const usePracticeStore = defineStore('practice', () => {
         activeTrackId.value = null
       }
 
-      await saveLibrarySnapshot('directory-handle')
+      clearTransientFiles()
+      await saveLibrarySnapshot('desktop-directory')
     } catch (refreshIssue) {
       const message = refreshIssue instanceof Error ? refreshIssue.message : 'Failed to refresh folder.'
       scanError.value = message
@@ -499,21 +488,21 @@ export const usePracticeStore = defineStore('practice', () => {
     folderName.value = snapshot.folderName
     tracks.value = sortTracksByPath(snapshot.tracks)
     activeTrackId.value = snapshot.activeTrackId
+    folderId.value = snapshot.folderId
+    librarySourceType.value = snapshot.sourceType
     scanError.value = ''
     clearTransientFiles()
 
-    if (snapshot.sourceType === 'directory-handle' && snapshot.directoryHandle) {
-      folderHandle.value = snapshot.directoryHandle
-      const permission = await getDirectoryReadPermission(snapshot.directoryHandle, 'check-only')
-      folderConnected.value = permission === 'granted'
-
-      if (!folderConnected.value) {
-        scanError.value = 'Folder permission missing. Reconnect with Import Folder.'
+    if (snapshot.sourceType === 'desktop-directory' && snapshot.folderId) {
+      if (!getDesktopApi()) {
+        folderConnected.value = false
+        scanError.value = 'Desktop API unavailable. Re-import folder.'
         return
       }
-
-      if (tracks.value.length === 0) {
-        await refreshFolderScan()
+      folderConnected.value = true
+      await refreshFolderScan()
+      if (!folderConnected.value) {
+        return
       }
 
       if (activeTrackId.value) {
@@ -522,7 +511,7 @@ export const usePracticeStore = defineStore('practice', () => {
       return
     }
 
-    folderHandle.value = null
+    folderId.value = null
     folderConnected.value = false
     if (tracks.value.length > 0) {
       scanError.value = 'Folder needs re-import after reload in this browser.'

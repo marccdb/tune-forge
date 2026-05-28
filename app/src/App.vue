@@ -24,7 +24,7 @@ const formattedTime = computed(() => {
 
 const hasLoadedTrack = computed(() => Boolean(store.loadedFile))
 const controlsDisabled = computed(() => store.isImporting || !hasLoadedTrack.value)
-const hasDirectoryPicker = computed(() => typeof window !== 'undefined' && 'showDirectoryPicker' in window)
+const hasDesktopApi = computed(() => typeof window !== 'undefined' && Boolean(window.desktopApi))
 const activeLoopSection = computed(
   () => store.loopSections.find((section) => section.id === store.activeLoopSectionId) ?? null,
 )
@@ -73,7 +73,7 @@ async function onFileChanged(event: Event) {
 }
 
 async function onImportFolderClick() {
-  if (hasDirectoryPicker.value) {
+  if (hasDesktopApi.value) {
     await store.importFolder()
     return
   }
@@ -89,6 +89,11 @@ async function onFallbackFolderChanged(event: Event) {
   } finally {
     target.value = ''
   }
+}
+
+async function onRefreshFolderClick() {
+  if (!canRefreshFolder.value) return
+  await store.refreshFolderScan()
 }
 
 function toggleTheme() {
@@ -183,7 +188,7 @@ onBeforeUnmount(() => {
               type="button"
               class="btn btn-sm btn-outline-secondary"
               :disabled="!canRefreshFolder"
-              @click="store.refreshFolderScan()"
+              @click="onRefreshFolderClick"
             >
               Refresh
             </button>
@@ -246,7 +251,7 @@ onBeforeUnmount(() => {
               </label>
               <span class="badge text-bg-secondary" v-if="store.trackName">{{ store.trackName }}</span>
               <span class="badge text-bg-info" v-if="store.isImporting">Loading waveform...</span>
-              <span class="badge text-bg-warning" v-if="!hasDirectoryPicker">Folder picker fallback mode</span>
+              <span class="badge text-bg-warning" v-if="!hasDesktopApi">Folder picker fallback mode</span>
             </div>
 
             <div class="alert alert-danger py-2 px-3 mb-0" v-if="store.error">{{ store.error }}</div>

@@ -44,7 +44,7 @@ export interface PracticeProject {
   updatedAt: string
 }
 
-export type LibrarySourceType = 'directory-handle' | 'webkitdirectory'
+export type LibrarySourceType = 'desktop-directory' | 'webkitdirectory'
 
 export interface FolderTrack {
   id: string
@@ -61,6 +61,6 @@ export interface LibrarySnapshot {
   tracks: FolderTrack[]
   activeTrackId: string | null
   sourceType: LibrarySourceType
-  directoryHandle: FileSystemDirectoryHandle | null
+  folderId: string | null
   updatedAt: string
 }

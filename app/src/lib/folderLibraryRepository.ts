@@ -1,5 +1,5 @@
 import { openDB, type DBSchema } from 'idb'
-import type { LibrarySnapshot } from '../types/practice'
+import type { FolderTrack, LibrarySnapshot } from '../types/practice'
 
 const DB_NAME = 'anytune-library-db'
 const DB_VERSION = 1
@@ -14,6 +14,13 @@ interface LibraryDB extends DBSchema {
       snapshot: LibrarySnapshot
     }
   }
+}
+
+type LegacyLibrarySnapshot = Omit<LibrarySnapshot, 'sourceType' | 'folderId' | 'tracks'> & {
+  sourceType: 'directory-handle' | 'webkitdirectory'
+  directoryHandle?: FileSystemDirectoryHandle | null
+  folderId?: string | null
+  tracks: Array<Omit<FolderTrack, 'sourceType'> & { sourceType: 'directory-handle' | 'webkitdirectory' }>
 }
 
 async function getDB() {
@@ -36,7 +43,27 @@ export class IndexedDbFolderLibraryRepository implements FolderLibraryRepository
   async getSnapshot(): Promise<LibrarySnapshot | undefined> {
     const db = await getDB()
     const value = await db.get(STORE_NAME, SNAPSHOT_KEY)
-    return value?.snapshot
+    const snapshot = value?.snapshot as LibrarySnapshot | LegacyLibrarySnapshot | undefined
+    if (!snapshot) return undefined
+
+    const sourceType = snapshot.sourceType === 'directory-handle' ? 'webkitdirectory' : snapshot.sourceType
+
+    return {
+      folderName: snapshot.folderName,
+      tracks: snapshot.tracks.map((track) => ({
+        id: track.id,
+        name: track.name,
+        relativePath: track.relativePath,
+        fingerprint: track.fingerprint,
+        lastModified: track.lastModified,
+        size: track.size,
+        sourceType: track.sourceType === 'directory-handle' ? 'webkitdirectory' : track.sourceType,
+      })),
+      activeTrackId: snapshot.activeTrackId,
+      sourceType,
+      folderId: snapshot.folderId ?? null,
+      updatedAt: snapshot.updatedAt,
+    }
   }
 
   async saveSnapshot(snapshot: LibrarySnapshot): Promise<void> {
@@ -54,7 +81,7 @@ export class IndexedDbFolderLibraryRepository implements FolderLibraryRepository
       })),
       activeTrackId: snapshot.activeTrackId,
       sourceType: snapshot.sourceType,
-      directoryHandle: snapshot.directoryHandle,
+      folderId: snapshot.folderId,
       updatedAt: snapshot.updatedAt,
     }
     await db.put(STORE_NAME, { key: SNAPSHOT_KEY, snapshot: serializableSnapshot })

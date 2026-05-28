@@ -10,6 +10,9 @@ vi.mock('../lib/audioEngine', () => {
     async loadFile() {
       return 0
     }
+    async loadArrayBuffer() {
+      return 0
+    }
     async play() {}
     pause() {}
     seek() {}

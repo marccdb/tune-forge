@@ -48,13 +48,12 @@ export class AudioEngine {
     }
   }
 
-  async loadFile(file: File): Promise<number> {
+  private async loadDecodedAudio(arrayBuffer: ArrayBuffer): Promise<number> {
     const previousShifter = this.shifter
 
     try {
       this.pause()
       const ctx = this.ensureContext()
-      const arrayBuffer = await file.arrayBuffer()
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0))
 
       const nextDuration = audioBuffer.duration
@@ -92,6 +91,14 @@ export class AudioEngine {
       this.emit('error', { message })
       throw error
     }
+  }
+
+  async loadArrayBuffer(arrayBuffer: ArrayBuffer): Promise<number> {
+    return this.loadDecodedAudio(arrayBuffer)
+  }
+
+  async loadFile(file: File): Promise<number> {
+    return this.loadDecodedAudio(await file.arrayBuffer())
   }
 
   async play(): Promise<void> {
