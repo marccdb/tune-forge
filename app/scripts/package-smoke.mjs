@@ -14,9 +14,10 @@ if (!targetFlag) {
 }
 
 const args = ['exec', 'electron-builder', '--', '--dir', '--publish', 'never', '--config.compression=store', targetFlag]
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
-console.log(`Running package smoke: npm ${args.join(' ')}`)
-execFileSync('npm', args, {
+console.log(`Running package smoke: ${npmCommand} ${args.join(' ')}`)
+execFileSync(npmCommand, args, {
   stdio: 'inherit',
   env: {
     ...process.env,

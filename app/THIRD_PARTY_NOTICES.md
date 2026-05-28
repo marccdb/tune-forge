@@ -5,8 +5,6 @@ Generated from runtime npm dependencies (`npm ls --omit=dev --all --json --long`
 ## @babel/helper-string-parser@7.29.7
 
 - License: MIT
-- Homepage: https://babel.dev/docs/en/next/babel-helper-string-parser
-- Repository: https://github.com/babel/babel.git
 
 ```text
 MIT License
@@ -36,8 +34,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## @babel/helper-validator-identifier@7.29.7
 
 - License: MIT
-- Homepage: N/A
-- Repository: https://github.com/babel/babel.git
 
 ```text
 MIT License
@@ -67,8 +63,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## @babel/parser@7.29.7
 
 - License: MIT
-- Homepage: https://babel.dev/docs/en/next/babel-parser
-- Repository: https://github.com/babel/babel.git
 
 ```text
 Copyright (C) 2012-2014 by various contributors (see AUTHORS)
@@ -95,8 +89,6 @@ THE SOFTWARE.
 ## @babel/types@7.29.7
 
 - License: MIT
-- Homepage: https://babel.dev/docs/en/next/babel-types
-- Repository: https://github.com/babel/babel.git
 
 ```text
 MIT License
@@ -126,8 +118,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## @jridgewell/sourcemap-codec@1.5.5
 
 - License: MIT
-- Homepage: https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec
-- Repository: git+https://github.com/jridgewell/sourcemaps.git
 
 ```text
 Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
@@ -154,8 +144,6 @@ SOFTWARE.
 ## @popperjs/core@2.11.8
 
 - License: MIT
-- Homepage: N/A
-- Repository: github:popperjs/popper-core
 
 ```text
 The MIT License (MIT)
@@ -183,8 +171,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## @vue/compiler-core@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/compiler-core#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -213,8 +199,6 @@ THE SOFTWARE.
 ## @vue/compiler-dom@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/compiler-dom#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -243,8 +227,6 @@ THE SOFTWARE.
 ## @vue/compiler-sfc@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -273,8 +255,6 @@ THE SOFTWARE.
 ## @vue/compiler-ssr@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/compiler-ssr#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -303,8 +283,6 @@ THE SOFTWARE.
 ## @vue/devtools-api@7.7.9
 
 - License: MIT
-- Homepage: N/A
-- Repository: git+https://github.com/vuejs/devtools.git
 
 ```text
 MIT License
@@ -333,8 +311,6 @@ SOFTWARE.
 ## @vue/devtools-kit@7.7.9
 
 - License: MIT
-- Homepage: N/A
-- Repository: git+https://github.com/vuejs/devtools.git
 
 ```text
 MIT License
@@ -363,8 +339,6 @@ SOFTWARE.
 ## @vue/devtools-shared@7.7.9
 
 - License: MIT
-- Homepage: N/A
-- Repository: git+https://github.com/vuejs/devtools.git
 
 ```text
 MIT License
@@ -393,8 +367,6 @@ SOFTWARE.
 ## @vue/reactivity@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/reactivity#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -423,8 +395,6 @@ THE SOFTWARE.
 ## @vue/runtime-core@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/runtime-core#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -453,8 +423,6 @@ THE SOFTWARE.
 ## @vue/runtime-dom@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/runtime-dom#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -483,8 +451,6 @@ THE SOFTWARE.
 ## @vue/server-renderer@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/server-renderer#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -513,8 +479,6 @@ THE SOFTWARE.
 ## @vue/shared@3.5.35
 
 - License: MIT
-- Homepage: https://github.com/vuejs/core/tree/main/packages/shared#readme
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -543,8 +507,6 @@ THE SOFTWARE.
 ## birpc@2.9.0
 
 - License: MIT
-- Homepage: https://github.com/antfu-collective/birpc#readme
-- Repository: git+https://github.com/antfu-collective/birpc.git
 
 ```text
 MIT License
@@ -573,8 +535,6 @@ SOFTWARE.
 ## bootstrap-icons@1.13.1
 
 - License: MIT
-- Homepage: https://icons.getbootstrap.com/
-- Repository: git+https://github.com/twbs/icons.git
 
 ```text
 The MIT License (MIT)
@@ -603,8 +563,6 @@ THE SOFTWARE.
 ## bootstrap@5.3.8
 
 - License: MIT
-- Homepage: https://getbootstrap.com/
-- Repository: git+https://github.com/twbs/bootstrap.git
 
 ```text
 The MIT License (MIT)
@@ -633,8 +591,6 @@ THE SOFTWARE.
 ## copy-anything@4.0.5
 
 - License: MIT
-- Homepage: https://github.com/mesqueeb/copy-anything#readme
-- Repository: https://github.com/mesqueeb/copy-anything.git
 
 ```text
 MIT License
@@ -663,8 +619,6 @@ SOFTWARE.
 ## csstype@3.2.3
 
 - License: MIT
-- Homepage: N/A
-- Repository: https://github.com/frenic/csstype
 
 ```text
 Copyright (c) 2017-2018 Fredrik Nicol
@@ -691,8 +645,6 @@ SOFTWARE.
 ## entities@7.0.1
 
 - License: BSD-2-Clause
-- Homepage: N/A
-- Repository: https://github.com/fb55/entities.git
 
 ```text
 Copyright (c) Felix Böhm
@@ -711,8 +663,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## estree-walker@2.0.2
 
 - License: MIT
-- Homepage: N/A
-- Repository: https://github.com/Rich-Harris/estree-walker
 
 ```text
 Copyright (c) 2015-20 [these people](https://github.com/Rich-Harris/estree-walker/graphs/contributors)
@@ -727,8 +677,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## hookable@5.5.3
 
 - License: MIT
-- Homepage: N/A
-- Repository: unjs/hookable
 
 ```text
 The MIT License (MIT)
@@ -757,8 +705,6 @@ SOFTWARE.
 ## idb@8.0.3
 
 - License: ISC
-- Homepage: N/A
-- Repository: git://github.com/jakearchibald/idb.git
 
 ```text
 ISC License (ISC)
@@ -772,8 +718,6 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 ## is-what@5.5.0
 
 - License: MIT
-- Homepage: https://github.com/mesqueeb/is-what#readme
-- Repository: https://github.com/mesqueeb/is-what.git
 
 ```text
 MIT License
@@ -802,8 +746,6 @@ SOFTWARE.
 ## magic-string@0.30.21
 
 - License: MIT
-- Homepage: N/A
-- Repository: git+https://github.com/Rich-Harris/magic-string.git
 
 ```text
 Copyright 2018 Rich Harris
@@ -818,8 +760,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## mitt@3.0.1
 
 - License: MIT
-- Homepage: https://github.com/developit/mitt
-- Repository: developit/mitt
 
 ```text
 MIT License
@@ -848,8 +788,6 @@ SOFTWARE.
 ## nanoid@3.3.12
 
 - License: MIT
-- Homepage: N/A
-- Repository: ai/nanoid
 
 ```text
 The MIT License (MIT)
@@ -877,8 +815,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## perfect-debounce@1.0.0
 
 - License: MIT
-- Homepage: N/A
-- Repository: unjs/perfect-debounce
 
 ```text
 MIT License
@@ -907,8 +843,6 @@ SOFTWARE.
 ## picocolors@1.1.1
 
 - License: ISC
-- Homepage: N/A
-- Repository: alexeyraspopov/picocolors
 
 ```text
 ISC License
@@ -931,8 +865,6 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ## pinia@3.0.4
 
 - License: MIT
-- Homepage: https://pinia.vuejs.org
-- Repository: git+https://github.com/vuejs/pinia.git
 
 ```text
 The MIT License (MIT)
@@ -961,8 +893,6 @@ SOFTWARE.
 ## postcss@8.5.15
 
 - License: MIT
-- Homepage: https://postcss.org/
-- Repository: postcss/postcss
 
 ```text
 The MIT License (MIT)
@@ -990,8 +920,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## rfdc@1.4.1
 
 - License: MIT
-- Homepage: https://github.com/davidmarkclements/rfdc#readme
-- Repository: git+https://github.com/davidmarkclements/rfdc.git
 
 ```text
 Copyright 2019 "David Mark Clements <david.mark.clements@gmail.com>"
@@ -1014,8 +942,6 @@ IN THE SOFTWARE.
 ## soundtouchjs@0.3.0
 
 - License: LGPL-2.1
-- Homepage: https://github.com/cutterbl/SoundTouchJS
-- Repository: git+https://github.com/cutterbl/SoundTouchJS.git
 
 ```text
                   GNU LESSER GENERAL PUBLIC LICENSE
@@ -1525,8 +1451,6 @@ That's all there is to it!
 ## source-map-js@1.2.1
 
 - License: BSD-3-Clause
-- Homepage: https://github.com/7rulnik/source-map-js
-- Repository: 7rulnik/source-map-js
 
 ```text
 
@@ -1562,8 +1486,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## speakingurl@14.0.1
 
 - License: BSD-3-Clause
-- Homepage: http://pid.github.io/speakingurl/
-- Repository: git+https://github.com/pid/speakingurl.git
 
 ```text
 The BSD 3-Clause License (BSD3)
@@ -1583,8 +1505,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 ## superjson@2.2.6
 
 - License: MIT
-- Homepage: N/A
-- Repository: https://github.com/blitz-js/superjson
 
 ```text
 MIT License
@@ -1613,8 +1533,6 @@ SOFTWARE.
 ## typescript@6.0.3
 
 - License: Apache-2.0
-- Homepage: https://www.typescriptlang.org/
-- Repository: https://github.com/microsoft/TypeScript.git
 
 ```text
 Apache License
@@ -1677,8 +1595,6 @@ END OF TERMS AND CONDITIONS
 ## vue@3.5.35
 
 - License: MIT
-- Homepage: https://vuejs.org/
-- Repository: git+https://github.com/vuejs/core.git
 
 ```text
 The MIT License (MIT)
@@ -1707,8 +1623,6 @@ THE SOFTWARE.
 ## wavesurfer.js@7.12.7
 
 - License: BSD-3-Clause
-- Homepage: https://wavesurfer.xyz
-- Repository: git@github.com:katspaugh/wavesurfer.js.git
 
 ```text
 BSD 3-Clause License

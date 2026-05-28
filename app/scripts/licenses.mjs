@@ -88,13 +88,6 @@ function collectRuntimePackages(tree) {
           version: dep.version,
           licenseExpression,
           path: dep.path ? String(dep.path) : '',
-          homepage: typeof dep.homepage === 'string' ? dep.homepage : '',
-          repository:
-            typeof dep.repository === 'string'
-              ? dep.repository
-              : dep.repository && typeof dep.repository.url === 'string'
-                ? dep.repository.url
-                : '',
         })
       }
       walk(dep)
@@ -211,8 +204,6 @@ async function generateNotices(packages) {
       `## ${packageDisplayName(pkg)}`,
       '',
       `- License: ${pkg.licenseExpression || 'UNKNOWN'}`,
-      `- Homepage: ${pkg.homepage || 'N/A'}`,
-      `- Repository: ${pkg.repository || 'N/A'}`,
       '',
     ]
 
