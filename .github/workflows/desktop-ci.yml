@@ -15,6 +15,9 @@ concurrency:
   group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   quality:
     name: License + Tests + Builds
@@ -24,10 +27,10 @@ jobs:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -62,10 +65,10 @@ jobs:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -97,10 +100,10 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -143,10 +146,10 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -159,7 +162,7 @@ jobs:
         run: npm run dist:desktop -- ${{ matrix.build_args }}
 
       - name: Upload desktop artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.artifact_glob }}
