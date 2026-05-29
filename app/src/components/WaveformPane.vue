@@ -47,8 +47,10 @@ const contextMenu = ref({
 const hasAudio = computed(() => Boolean(store.fileObjectUrl))
 const canZoomOut = computed(() => zoomFactor.value > MIN_ZOOM_FACTOR)
 const canZoomIn = computed(() => zoomFactor.value < MAX_ZOOM_FACTOR)
-const markerA = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'A') ?? null)
-const markerB = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'B') ?? null)
+const explicitMarkerA = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'A') ?? null)
+const explicitMarkerB = computed(() => store.markers.find((marker) => marker.label.trim().toUpperCase() === 'B') ?? null)
+const markerATimeSec = computed(() => store.pendingLoopStartSec ?? explicitMarkerA.value?.timeSec ?? null)
+const markerBTimeSec = computed(() => explicitMarkerB.value?.timeSec ?? null)
 const regularMarkers = computed(() =>
   store.markers.filter((marker) => {
     const normalized = marker.label.trim().toUpperCase()
@@ -230,8 +232,8 @@ function markerViewportLeftPx(timeSec: number): number {
   return markerLeftPx(timeSec) - waveScrollLeft.value
 }
 
-const markerAPositionPx = computed(() => (markerA.value ? markerViewportLeftPx(markerA.value.timeSec) : null))
-const markerBPositionPx = computed(() => (markerB.value ? markerViewportLeftPx(markerB.value.timeSec) : null))
+const markerAPositionPx = computed(() => (markerATimeSec.value != null ? markerViewportLeftPx(markerATimeSec.value) : null))
+const markerBPositionPx = computed(() => (markerBTimeSec.value != null ? markerViewportLeftPx(markerBTimeSec.value) : null))
 
 function closeContextMenu() {
   contextMenu.value.visible = false

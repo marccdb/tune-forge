@@ -61,16 +61,12 @@ vi.mock('../lib/folderLibraryRepository', () => {
   return { IndexedDbFolderLibraryRepository: MockFolderLibraryRepository }
 })
 
-function markerTime(store: ReturnType<typeof usePracticeStore>, label: string) {
-  return store.markers.find((marker) => marker.label === label)?.timeSec
-}
-
 describe('practice store A/B loop interaction', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  it('A sets pending start + marker only', () => {
+  it('A sets pending start only', () => {
     const store = usePracticeStore()
     store.durationSec = 120
 
@@ -78,7 +74,7 @@ describe('practice store A/B loop interaction', () => {
 
     expect(store.pendingLoopStartSec).toBe(12)
     expect(store.loopSections).toHaveLength(0)
-    expect(markerTime(store, 'A')).toBe(12)
+    expect(store.markers).toHaveLength(0)
   })
 
   it('B before A does not create section and shows hint', () => {
@@ -90,7 +86,7 @@ describe('practice store A/B loop interaction', () => {
     expect(store.pendingLoopStartSec).toBeNull()
     expect(store.loopSections).toHaveLength(0)
     expect(store.loopInteractionHint).toContain('Set A first')
-    expect(markerTime(store, 'B')).toBe(18)
+    expect(store.markers).toHaveLength(0)
   })
 
   it('B before pending A time normalizes by swapping boundaries', () => {
@@ -107,7 +103,7 @@ describe('practice store A/B loop interaction', () => {
     expect(store.loopInteractionHint).toContain('swapped')
   })
 
-  it('A while pending resets pending start and marker A', () => {
+  it('A while pending resets pending start without creating marker', () => {
     const store = usePracticeStore()
     store.durationSec = 120
 
@@ -115,8 +111,7 @@ describe('practice store A/B loop interaction', () => {
     store.setLoopStartAtTime(16)
 
     expect(store.pendingLoopStartSec).toBe(16)
-    expect(store.markers.filter((marker) => marker.label === 'A')).toHaveLength(1)
-    expect(markerTime(store, 'A')).toBe(16)
+    expect(store.markers).toHaveLength(0)
   })
 
   it('A/B updates active section without creating extra section', () => {
@@ -157,7 +152,7 @@ describe('practice store A/B loop interaction', () => {
     expect(store.loopSections.some((section) => section.id === firstSection.id && section.startSec === 5 && section.endSec === 8)).toBe(true)
   })
 
-  it('removing a loop section clears A/B markers', () => {
+  it('removing a loop section preserves explicit markers', () => {
     const store = usePracticeStore()
     store.durationSec = 120
 
@@ -168,8 +163,29 @@ describe('practice store A/B loop interaction', () => {
 
     store.removeLoopSection(sectionId)
 
-    expect(store.markers.some((marker) => marker.label === 'A')).toBe(false)
-    expect(store.markers.some((marker) => marker.label === 'B')).toBe(false)
     expect(store.markers.some((marker) => marker.label === 'Verse')).toBe(true)
+  })
+
+  it('clear all removes loop sections and keeps markers', () => {
+    const store = usePracticeStore()
+    store.durationSec = 120
+
+    store.setLoopStartAtTime(12)
+    store.setLoopEndAtTime(20)
+    store.currentTimeSec = 30
+    store.addLoopSection()
+    store.setLoopEndAtTime(40)
+    store.addMarkerAtTime(50, 'Chorus')
+
+    expect(store.loopSections).toHaveLength(2)
+    expect(store.activeLoopSectionId).not.toBeNull()
+
+    store.clearAllLoopSections()
+
+    expect(store.loopSections).toHaveLength(0)
+    expect(store.activeLoopSectionId).toBeNull()
+    expect(store.pendingLoopStartSec).toBeNull()
+    expect(store.loop.enabled).toBe(false)
+    expect(store.markers.some((marker) => marker.label === 'Chorus')).toBe(true)
   })
 })

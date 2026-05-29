@@ -666,7 +666,6 @@ export const usePracticeStore = defineStore('practice', () => {
     const clampedTime = normalizeTime(timeSec, duration)
     pendingLoopStartSec.value = clampedTime
     pendingLoopTargetSectionId.value = targetSectionId
-    upsertNamedMarkerAtTime('A', clampedTime)
     loopInteractionHint.value = targetSectionId
       ? 'Loop start (A) set. Press B to update active section.'
       : 'Loop start (A) set. Press B to create section.'
@@ -675,7 +674,6 @@ export const usePracticeStore = defineStore('practice', () => {
   function finalizeLoopEndAtTime(timeSec: number) {
     const duration = durationSec.value || MIN_LOOP_DURATION_SEC
     const clampedTime = normalizeTime(timeSec, duration)
-    upsertNamedMarkerAtTime('B', clampedTime)
 
     if (pendingLoopStartSec.value == null) {
       loopInteractionHint.value = 'Set A first, then press B.'
@@ -790,15 +788,15 @@ export const usePracticeStore = defineStore('practice', () => {
     syncActiveLoopSectionToEngine()
   }
 
+  function clearAllLoopSections() {
+    if (loopSections.value.length === 0) return
+    loopSections.value = []
+    clearActiveLoopSection()
+    loopInteractionHint.value = 'All loop sections cleared.'
+  }
+
   function removeLoopSection(sectionId: string) {
     loopSections.value = loopSections.value.filter((section) => section.id !== sectionId)
-    markers.value = markers.value.filter((marker) => {
-      const normalized = marker.label.trim().toLowerCase()
-      return normalized !== 'a' && normalized !== 'b'
-    })
-    if (activeMarkerId.value && !markers.value.some((marker) => marker.id === activeMarkerId.value)) {
-      activeMarkerId.value = markers.value[0]?.id ?? null
-    }
     if (pendingLoopTargetSectionId.value === sectionId) {
       pendingLoopTargetSectionId.value = null
     }
@@ -860,20 +858,6 @@ export const usePracticeStore = defineStore('practice', () => {
     }
     markers.value = [...markers.value, marker].sort((a, b) => a.timeSec - b.timeSec)
     activeMarkerId.value = marker.id
-  }
-
-  function upsertNamedMarkerAtTime(label: string, timeSec: number) {
-    const markerTime = normalizeTime(timeSec, durationSec.value || MIN_LOOP_DURATION_SEC)
-    const existing = markers.value.find((marker) => marker.label.toLowerCase() === label.toLowerCase())
-    if (!existing) {
-      addMarkerAtTime(markerTime, label)
-      return
-    }
-
-    markers.value = markers.value
-      .map((marker) => (marker.id === existing.id ? { ...marker, label, timeSec: markerTime } : marker))
-      .sort((a, b) => a.timeSec - b.timeSec)
-    activeMarkerId.value = existing.id
   }
 
   function removeMarker(markerId: string) {
@@ -1005,9 +989,9 @@ export const usePracticeStore = defineStore('practice', () => {
     setLoopEndAtTime,
     setLoopSectionEnabled,
     setAllLoopSectionsEnabled,
+    clearAllLoopSections,
     addMarker,
     addMarkerAtTime,
-    upsertNamedMarkerAtTime,
     removeMarker,
     renameMarker,
     jumpToMarker,

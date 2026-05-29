@@ -80,6 +80,7 @@ function createMockStore(overrides: Record<string, unknown> = {}) {
     setLoopEndAtTime: vi.fn(),
     setLoopSectionEnabled: vi.fn(),
     setAllLoopSectionsEnabled: vi.fn(),
+    clearAllLoopSections: vi.fn(),
     addMarker: vi.fn(),
     addMarkerAtTime: vi.fn(),
     upsertNamedMarkerAtTime: vi.fn(),
@@ -97,7 +98,6 @@ function createMockStore(overrides: Record<string, unknown> = {}) {
 describe('App refresh button permission UI', () => {
   beforeEach(() => {
     mockStore = createMockStore()
-    localStorage.setItem('modaudio-theme', 'light')
   })
 
   afterEach(() => {

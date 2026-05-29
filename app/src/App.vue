@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import WaveformPane from './components/WaveformPane.vue'
 import { usePracticeStore } from './stores/practice'
 import { MIN_PITCH, MAX_PITCH, MIN_TEMPO, MAX_TEMPO } from './lib/math'
 
 const store = usePracticeStore()
-const theme = ref<'light' | 'dark'>('light')
-const THEME_KEY = 'modaudio-theme'
 
 const fallbackFolderInput = ref<HTMLInputElement | null>(null)
 
@@ -96,14 +94,6 @@ async function onRefreshFolderClick() {
   await store.refreshFolderScan()
 }
 
-function toggleTheme() {
-  theme.value = theme.value === 'dark' ? 'light' : 'dark'
-}
-
-function applyTheme(value: 'light' | 'dark') {
-  document.documentElement.setAttribute('data-bs-theme', value)
-}
-
 function onLoopSectionStartInput(sectionId: string, value: string) {
   const parsed = Number(value)
   if (Number.isNaN(parsed)) return
@@ -149,21 +139,8 @@ function registerShortcuts(event: KeyboardEvent) {
 }
 
 onMounted(() => {
-  const storedTheme = localStorage.getItem(THEME_KEY)
-  if (storedTheme === 'light' || storedTheme === 'dark') {
-    theme.value = storedTheme
-  } else {
-    theme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
-
-  applyTheme(theme.value)
   window.addEventListener('keydown', registerShortcuts)
   void store.restoreLastFolder()
-})
-
-watch(theme, (value) => {
-  applyTheme(value)
-  localStorage.setItem(THEME_KEY, value)
 })
 
 onBeforeUnmount(() => {
@@ -242,15 +219,69 @@ onBeforeUnmount(() => {
         <section class="card shadow-sm border-0 mb-3">
           <div class="card-body d-flex flex-column gap-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-              <div>
-                <h1 class="display-6 fw-bold mb-1">ModAudio</h1>
-                <p class="text-body-secondary mb-0">
-                  Practice studio: tempo, pitch, A/B loops, markers, per-song local save.
-                </p>
+              <div class="brand-heading">
+                <div class="brand-mark" aria-hidden="true">
+                  <svg
+                    class="brand-mark-svg"
+                    width="1024"
+                    height="1024"
+                    viewBox="0 0 1024 1024"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <rect width="1024" height="1024" fill="#4A4A4A" />
+
+                    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M365 320 Q512 210 659 320" stroke="#6D8196" stroke-width="14" />
+                      <path d="M365 590 Q512 700 659 590" stroke="#6D8196" stroke-width="14" />
+
+                      <path d="M345 570 V365 L512 500 L679 365 V570" stroke="#FFFFE3" stroke-width="38" />
+
+                      <path d="M392 438 V552" stroke="#6D8196" stroke-width="10" />
+                      <circle cx="392" cy="488" r="18" fill="#FFFFE3" />
+
+                      <path d="M632 438 V552" stroke="#6D8196" stroke-width="10" />
+                      <circle cx="632" cy="488" r="18" fill="#FFFFE3" />
+
+                      <polygon points="490,525 490,580 540,552" fill="#FFFFE3" />
+                    </g>
+
+                    <g fill="#CBCBCB">
+                      <rect x="180" y="490" width="18" height="36" rx="9" />
+                      <rect x="220" y="460" width="18" height="80" rx="9" />
+                      <rect x="260" y="430" width="18" height="140" rx="9" />
+                      <rect x="300" y="395" width="18" height="210" rx="9" />
+
+                      <rect x="706" y="395" width="18" height="210" rx="9" />
+                      <rect x="746" y="430" width="18" height="140" rx="9" />
+                      <rect x="786" y="460" width="18" height="80" rx="9" />
+                      <rect x="826" y="490" width="18" height="36" rx="9" />
+                    </g>
+
+                    <text
+                      x="512"
+                      y="760"
+                      text-anchor="middle"
+                      font-family="Montserrat, Poppins, Arial, sans-serif"
+                      font-size="118"
+                      font-weight="300"
+                      letter-spacing="-4"
+                    >
+                      <tspan fill="#FFFFE3">Mod</tspan><tspan fill="#6D8196">audio</tspan>
+                    </text>
+
+                    <circle cx="825" cy="730" r="28" fill="#6D8196" />
+                    <polygon points="816,714 816,746 842,730" fill="#FFFFE3" />
+                  </svg>
+                </div>
+                <div class="brand-copy">
+                  <h1 class="display-6 fw-bold mb-1 brand-title">
+                    <span class="brand-title-main">Mod</span><span class="brand-title-accent">Audio</span>
+                  </h1>
+                  <p class="text-body-secondary mb-0">
+                    Practice studio: tempo, pitch, A/B loops, markers, per-song local save.
+                  </p>
+                </div>
               </div>
-              <button type="button" class="btn btn-secondary" @click="toggleTheme">
-                {{ theme === 'dark' ? 'Light Mode' : 'Dark Mode' }}
-              </button>
             </div>
 
             <div class="d-flex flex-wrap align-items-center gap-2" v-if="store.trackName || store.isImporting">
@@ -357,73 +388,18 @@ onBeforeUnmount(() => {
         <section class="row g-3 mb-3">
           <div class="col-lg-6">
             <div class="card shadow-sm border-0 h-100">
-              <div class="card-body">
-                <label class="form-label d-flex justify-content-between">
-                  <span>Tempo</span>
-                  <strong>
-                    {{ tempoPercent.toFixed(0) }}%
-                    ({{ tempoDeltaBpm >= 0 ? '+' : '' }}{{ tempoDeltaBpm }} BPM)
-                  </strong>
-                </label>
-                <div class="d-flex gap-2 mb-2">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(-1)">
-                    -1 BPM
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(1)">
-                    +1 BPM
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="store.setTempo(1)">
-                    Reset 100%
+              <div class="card-body d-flex flex-column gap-3">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <h2 class="section-title mb-0">Loops</h2>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    :disabled="controlsDisabled || store.loopSections.length === 0"
+                    @click="store.clearAllLoopSections"
+                  >
+                    Clear All
                   </button>
                 </div>
-                <input
-                  :value="store.tempo"
-                  class="form-range mb-3"
-                  type="range"
-                  :min="MIN_TEMPO"
-                  :max="MAX_TEMPO"
-                  step="0.01"
-                  :disabled="controlsDisabled"
-                  @input="store.setTempo(Number(($event.target as HTMLInputElement).value))"
-                />
-
-                <label class="form-label d-flex justify-content-between">
-                  <span>Pitch</span>
-                  <strong>{{ pitchHalfToneLabel }}</strong>
-                </label>
-                <input
-                  :value="store.pitchSemitones"
-                  class="form-range mb-3"
-                  type="range"
-                  :min="MIN_PITCH"
-                  :max="MAX_PITCH"
-                  step="1"
-                  :disabled="controlsDisabled"
-                  @input="store.setPitchSemitones(Number(($event.target as HTMLInputElement).value))"
-                />
-
-                <label class="form-label d-flex justify-content-between">
-                  <span>Volume</span>
-                  <strong>{{ store.volume.toFixed(2) }}</strong>
-                </label>
-                <input
-                  :value="store.volume"
-                  class="form-range mb-0"
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.01"
-                  :disabled="controlsDisabled"
-                  @input="store.setVolume(Number(($event.target as HTMLInputElement).value))"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="col-lg-6">
-            <div class="card shadow-sm border-0 h-100">
-              <div class="card-body d-flex flex-column gap-3">
-                <h2 class="section-title">Loops</h2>
                 <p v-if="hasPendingLoopStart" class="mb-0 small text-body-secondary">
                   Pending start A at {{ (store.pendingLoopStartSec ?? 0).toFixed(2) }}s. Set B to finalize this section.
                 </p>
@@ -530,6 +506,71 @@ onBeforeUnmount(() => {
                   </span>
                   <span v-else>No active section selected.</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+              <div class="card-body">
+                <label class="form-label d-flex justify-content-between">
+                  <span>Tempo</span>
+                  <strong>
+                    {{ tempoPercent.toFixed(0) }}%
+                    ({{ tempoDeltaBpm >= 0 ? '+' : '' }}{{ tempoDeltaBpm }} BPM)
+                  </strong>
+                </label>
+                <div class="d-flex gap-2 mb-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(-1)">
+                    -1 BPM
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="nudgeTempoByBpm(1)">
+                    +1 BPM
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="controlsDisabled" @click="store.setTempo(1)">
+                    Reset 100%
+                  </button>
+                </div>
+                <input
+                  :value="store.tempo"
+                  class="form-range mb-3"
+                  type="range"
+                  :min="MIN_TEMPO"
+                  :max="MAX_TEMPO"
+                  step="0.01"
+                  :disabled="controlsDisabled"
+                  @input="store.setTempo(Number(($event.target as HTMLInputElement).value))"
+                />
+
+                <label class="form-label d-flex justify-content-between">
+                  <span>Pitch</span>
+                  <strong>{{ pitchHalfToneLabel }}</strong>
+                </label>
+                <input
+                  :value="store.pitchSemitones"
+                  class="form-range mb-3"
+                  type="range"
+                  :min="MIN_PITCH"
+                  :max="MAX_PITCH"
+                  step="1"
+                  :disabled="controlsDisabled"
+                  @input="store.setPitchSemitones(Number(($event.target as HTMLInputElement).value))"
+                />
+
+                <label class="form-label d-flex justify-content-between">
+                  <span>Volume</span>
+                  <strong>{{ store.volume.toFixed(2) }}</strong>
+                </label>
+                <input
+                  :value="store.volume"
+                  class="form-range mb-0"
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.01"
+                  :disabled="controlsDisabled"
+                  @input="store.setVolume(Number(($event.target as HTMLInputElement).value))"
+                />
               </div>
             </div>
           </div>
