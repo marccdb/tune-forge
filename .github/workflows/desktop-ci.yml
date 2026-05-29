@@ -241,6 +241,10 @@ jobs:
             os: macos-14
             build_args: --mac dmg --arm64 --publish never
             release_glob: release/*.dmg
+          - name: macos-x64
+            os: macos-13
+            build_args: --mac dmg --x64 --publish never
+            release_glob: release/*.dmg
     defaults:
       run:
         working-directory: app
