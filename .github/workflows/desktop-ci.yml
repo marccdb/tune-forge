@@ -21,6 +21,57 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  sync-version-from-tag:
+    name: Sync app version from tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Update package version files
+        working-directory: app
+        run: |
+          release_version="${RELEASE_VERSION#v}"
+          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must be semver-like (vX.Y.Z). Got: ${RELEASE_VERSION}"
+            exit 1
+          fi
+
+          current_version="$(node -p "require('./package.json').version")"
+          if [ "$current_version" = "$release_version" ]; then
+            echo "Version already synced: $current_version"
+            exit 0
+          fi
+
+          npm version "$release_version" --no-git-tag-version --allow-same-version
+
+      - name: Commit and push version sync
+        run: |
+          if git diff --quiet -- app/package.json app/package-lock.json; then
+            echo "No version file changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/package.json app/package-lock.json
+          git commit -m "chore: sync app version to ${RELEASE_VERSION}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+
   quality:
     name: License + Tests + Builds
     runs-on: ubuntu-latest
@@ -37,6 +88,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
+
+      - name: Align package version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci
@@ -76,6 +132,11 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: Align package version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
       - name: Install dependencies
         run: npm ci
 
@@ -110,6 +171,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
+
+      - name: Align package version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci
@@ -190,6 +256,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
+
+      - name: Align package version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: npm ci
